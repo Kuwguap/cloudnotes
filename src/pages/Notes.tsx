@@ -293,18 +293,18 @@ const Notes: React.FC = () => {
 
   // Update note content handler
   const handleNoteUpdate = useCallback(
-    debounce(async (noteId: string, data: Partial<Note>) => {
+    debounce(async (noteId: string, data: Partial<Note> & { passcode?: string }) => {
       const editor = editorRef.current;
       if (!editor || editor.isDestroyed) return;
 
       try {
-        const noteToUpdate = notes.find(note => note.id === noteId);
-        if (!noteToUpdate) return;
+        const currentNote = notes.find(note => note.id === noteId);
+        if (!currentNote) return;
 
-        if (noteToUpdate.isLocked) {
+        if (currentNote.isLocked) {
           console.log('Preventing update of locked note:', noteId);
           setError('Cannot edit a locked note');
-          editor.commands.setContent(noteToUpdate.content || '');
+          editor.commands.setContent(currentNote.content || '');
           return;
         }
 
@@ -344,8 +344,8 @@ const Notes: React.FC = () => {
         setError(err.response?.data?.error || 'Failed to update note');
         
         // Restore editor content on error
-        if (noteToUpdate) {
-          editor.commands.setContent(noteToUpdate.content || '');
+        if (currentNote) {
+          editor.commands.setContent(currentNote.content || '');
         }
       }
     }, 500),
@@ -480,12 +480,12 @@ const Notes: React.FC = () => {
       attributes: {
         class: 'prose dark:prose-invert max-w-none focus:outline-none min-h-[200px]',
       },
-      handleDrop: async (view, event, slice, moved) => {
+      handleDrop: (view, event, slice, moved) => {
         if (!moved && event.dataTransfer?.files.length) {
           const file = event.dataTransfer.files[0];
           if (file.type.startsWith('image/')) {
             event.preventDefault();
-            await handleImageUpload(file);
+            handleImageUpload(file);
             return true;
           }
         }
@@ -828,11 +828,11 @@ const Notes: React.FC = () => {
     }
   }, [deleteConfirmation.noteId, selectedNote?.id, editor]);
 
-  const handleConfirmShare = useCallback(async (permissions: string[]) => {
+  const handleConfirmShare = useCallback(async (data: { email: string; canEdit: boolean }) => {
     if (!shareModal.noteId) return;
 
     try {
-      await shareNote(shareModal.noteId, permissions);
+      await shareNote(shareModal.noteId, data);
       setShareModal({
         isOpen: false,
         noteId: null,
@@ -1456,7 +1456,7 @@ const Notes: React.FC = () => {
                 onFolderSelect={handleFolderSelect}
                 onCreateFolder={handleCreateFolder}
                 onEditFolder={handleEditFolder}
-                onDeleteFolder={handleFolderDelete}
+                onDeleteFolder={(folderId: string) => handleFolderDelete(folderId, '')}
               />
             </div>
 

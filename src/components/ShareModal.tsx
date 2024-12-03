@@ -9,9 +9,8 @@ interface ShareModalProps {
   onClose: () => void;
   onSubmit: (data: { email: string; canEdit: boolean }) => Promise<void>;
   title: string;
-  sharedWith?: NoteShare[];
-  onRemoveShare?: (userId: string) => Promise<void>;
-  onUpdatePermissions?: (userId: string, canEdit: boolean) => Promise<void>;
+  noteId?: string | null;
+  noteTitle: string;
 }
 
 const ShareModal: React.FC<ShareModalProps> = ({
@@ -19,9 +18,8 @@ const ShareModal: React.FC<ShareModalProps> = ({
   onClose,
   onSubmit,
   title,
-  sharedWith = [],
-  onRemoveShare,
-  onUpdatePermissions,
+  noteId,
+  noteTitle,
 }) => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
