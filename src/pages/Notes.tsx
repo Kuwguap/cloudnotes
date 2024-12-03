@@ -65,7 +65,7 @@ import Superscript from '@tiptap/extension-superscript';
 import Dropcursor from '@tiptap/extension-dropcursor';
 import { createPortal } from 'react-dom';
 import imageCompression from 'browser-image-compression';
-import { socketService, type NoteUpdate } from '../services/socket';
+import { socketService, type NoteUpdate } from '../services/socketService';
 import { uploadImage } from '../services/cloudinary';
 
 interface Category {
