@@ -8,17 +8,44 @@
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
     <title>CloudNotes</title>
-    <script>
-        window.env = {
-            VITE_API_URL: "%VITE_API_URL%",
-            VITE_SOCKET_URL: "%VITE_SOCKET_URL%",
-            VITE_CLOUDINARY_CLOUD_NAME: "%VITE_CLOUDINARY_CLOUD_NAME%",
-            VITE_CLOUDINARY_API_KEY: "%VITE_CLOUDINARY_API_KEY%"
-        };
-    </script>
 </head>
 <body>
     <div id="root"></div>
-    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <script>
+        // Only register service worker in production
+        if ('serviceWorker' in navigator && window.location.hostname !== 'localhost') {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/service-worker.js', {
+                    scope: '/',
+                    updateViaCache: 'none'
+                }).then(registration => {
+                    // Check for updates at most once per hour
+                    const checkForUpdates = () => {
+                        registration.update().catch(err => {
+                            console.error('Service Worker update failed:', err);
+                        });
+                    };
+                    
+                    // Initial check after 1 hour
+                    setTimeout(checkForUpdates, 60 * 60 * 1000);
+                    
+                    // Then check every hour
+                    setInterval(checkForUpdates, 60 * 60 * 1000);
+                    
+                    console.log('ServiceWorker registration successful');
+                }).catch(err => {
+                    console.log('ServiceWorker registration failed: ', err);
+                });
+            });
+        } else if ('serviceWorker' in navigator) {
+            // Unregister service worker in development
+            navigator.serviceWorker.getRegistrations().then(registrations => {
+                for (let registration of registrations) {
+                    registration.unregister();
+                }
+            });
+        }
+    </script>
+    <script src="/bundle.js"></script>
 </body>
 </html> 

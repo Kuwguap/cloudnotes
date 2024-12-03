@@ -17,15 +17,9 @@ const io = new Server(server, {
   cors: {
     origin: process.env.CLIENT_URL || 'http://localhost:3001',
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    credentials: true,
-    allowedHeaders: ['Authorization', 'Content-Type']
+    credentials: true
   }
 });
-
-// Trust proxy for secure cookies in production
-if (process.env.NODE_ENV === 'production') {
-  app.set('trust proxy', 1);
-}
 
 const prisma = new PrismaClient();
 
@@ -34,14 +28,8 @@ app.use(express.json());
 app.use(cors({
   origin: process.env.CLIENT_URL || 'http://localhost:3001',
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  credentials: true,
-  allowedHeaders: ['Authorization', 'Content-Type']
+  credentials: true
 }));
-
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({ status: 'healthy', environment: process.env.NODE_ENV });
-});
 
 // Basic route for testing
 app.get('/', (req, res) => {
@@ -187,11 +175,8 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('note:change', async (data: string) => {
+  socket.on('note:change', async ({ noteId, changes }) => {
     try {
-      const parsedData = JSON.parse(data);
-      const { noteId, changes } = parsedData;
-      
       const user = connectedUsers.get(socket.id);
       if (!user) return;
 
@@ -225,11 +210,11 @@ io.on('connection', (socket) => {
       }
 
       // Broadcast changes to all users in the note's room except sender
-      socket.to(`note:${noteId}`).emit('note:change', JSON.stringify({
+      socket.to(`note:${noteId}`).emit('note:change', {
         noteId,
         changes,
         userId: user.userId
-      }));
+      });
 
       // Update the note in the database
       await prisma.note.update({

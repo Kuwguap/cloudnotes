@@ -64,10 +64,8 @@ import Subscript from '@tiptap/extension-subscript';
 import Superscript from '@tiptap/extension-superscript';
 import Dropcursor from '@tiptap/extension-dropcursor';
 import { createPortal } from 'react-dom';
-import imageCompression from 'browser-image-compression';
-import { socketService, type NoteUpdate } from '../services/socketService';
-import { uploadImage } from '../services/cloudinary';
-import { hashPasscode } from '../utils/hashPasscode';
+import { Socket } from 'socket.io-client';
+import { DefaultEventsMap } from 'socket.io/dist/typed-events';
 
 interface Category {
   id: string;
@@ -119,65 +117,81 @@ class EditorErrorBoundary extends React.Component<
 }
 
 // Add image compression function
-const compressImage = async (file: File): Promise<string> => {
-  try {
-    const options = {
-      maxSizeMB: 0.1, // 100KB
-      maxWidthOrHeight: 800,
-      useWebWorker: true,
-      fileType: 'image/jpeg',
-      initialQuality: 0.7,
+const compressImage = async (file: File, maxWidth = 800, maxHeight = 800, quality = 0.5): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (e) => {
+      const img = new Image();
+      img.src = e.target?.result as string;
+      
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        // Calculate new dimensions while maintaining aspect ratio
+        if (width > height) {
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        // Further reduce dimensions if the image is still large
+        const MAX_PIXELS = 400000; // e.g., 632x632
+        if (width * height > MAX_PIXELS) {
+          const scale = Math.sqrt(MAX_PIXELS / (width * height));
+          width = Math.round(width * scale);
+          height = Math.round(height * scale);
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        
+        if (!ctx) {
+          reject(new Error('Could not get canvas context'));
+          return;
+        }
+
+        // Use better image smoothing
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        
+        // Draw image with white background to handle transparency
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // Convert to JPEG with quality setting
+        let compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+        
+        // If still too large, reduce quality until it's under 100KB
+        let currentQuality = quality;
+        while (compressedDataUrl.length > 100 * 1024 && currentQuality > 0.1) {
+          currentQuality *= 0.8;
+          compressedDataUrl = canvas.toDataURL('image/jpeg', currentQuality);
+        }
+
+        resolve(compressedDataUrl);
+      };
+
+      img.onerror = () => {
+        reject(new Error('Failed to load image'));
+      };
     };
 
-    // Compress the image file
-    const compressedFile = await imageCompression(file, options);
-    
-    // Convert to base64
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(compressedFile);
-      reader.onload = () => {
-        const base64String = reader.result as string;
-        // Further compress if still too large
-        if (base64String.length > 100 * 1024) {
-          // Try again with more aggressive compression
-          const aggressiveOptions = {
-            ...options,
-            maxSizeMB: 0.05,
-            initialQuality: 0.5,
-          };
-          imageCompression(file, aggressiveOptions)
-            .then(aggressiveFile => {
-              const aggressiveReader = new FileReader();
-              aggressiveReader.readAsDataURL(aggressiveFile);
-              aggressiveReader.onload = () => {
-                resolve(aggressiveReader.result as string);
-              };
-              aggressiveReader.onerror = reject;
-            })
-            .catch(reject);
-        } else {
-          resolve(base64String);
-        }
-      };
-      reader.onerror = reject;
-    });
-  } catch (error) {
-    console.error('Error compressing image:', error);
-    throw error;
-  }
+    reader.onerror = () => {
+      reject(new Error('Failed to read file'));
+    };
+  });
 };
-
-interface LockModalState {
-  isOpen: boolean;
-  noteId: string | null;
-}
-
-interface FolderState {
-  id: string;
-  name: string;
-  parentId: string | null;
-}
 
 const Notes: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -199,7 +213,6 @@ const Notes: React.FC = () => {
   const [isCollaborating, setIsCollaborating] = useState(false);
   const [activeCollaborators, setActiveCollaborators] = useState<{[noteId: string]: User[]}>({});
   const [folders, setFolders] = useState<Folder[]>([]);
-  const [selectedFolder, setSelectedFolder] = useState<FolderState | null>(null);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [folderModalOpen, setFolderModalOpen] = useState(false);
   const [editingFolder, setEditingFolder] = useState<Folder | null>(null);
@@ -221,7 +234,19 @@ const Notes: React.FC = () => {
     noteId: null,
     noteTitle: '',
   });
-  const [lockModal, setLockModal] = useState<LockModalState>({ isOpen: false, noteId: null });
+  const [lockModal, setLockModal] = useState<{
+    isOpen: boolean;
+    mode: 'lock' | 'unlock';
+    type: 'note' | 'folder';
+    id: string | null;
+    title: string;
+  }>({
+    isOpen: false,
+    mode: 'lock',
+    type: 'note',
+    id: null,
+    title: '',
+  });
   const [selectedLockedNote, setSelectedLockedNote] = useState<Note | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [shareModal, setShareModal] = useState<{
@@ -240,57 +265,35 @@ const Notes: React.FC = () => {
   const [isEditorReady, setIsEditorReady] = useState(false);
   const [showCloudView, setShowCloudView] = useState(false);
   const editorRef = useRef<ReturnType<typeof useEditor> | null>(null);
+  const [socket, setSocket] = useState<Socket<DefaultEventsMap, DefaultEventsMap> | null>(null);
 
   // Initialize socket connection
   useEffect(() => {
     const initSocket = async () => {
       try {
-        await socketService.connect();
-        
-        // Join note session if there's a selected note
-        if (selectedNote) {
-          socketService.sendNoteUpdate({
-            type: 'note-update',
-            noteId: selectedNote.id,
-            changes: {}
-          });
-        }
-      } catch (error) {
-        console.error('Failed to connect socket:', error);
+        const newSocket = await connectSocket();
+        setSocket(newSocket);
+
+        return () => {
+          if (newSocket) {
+            newSocket.disconnect();
+          }
+        };
+      } catch (err) {
+        console.error('Failed to connect socket:', err);
         setError('Failed to establish real-time connection');
       }
     };
 
     initSocket();
-    return () => {
-      socketService.disconnect();
-    };
   }, []);
 
-  // Handle socket updates
+  // Join note session when note is selected
   useEffect(() => {
-    if (!selectedNote) return;
-
-    const handleNoteUpdate = (update: NoteUpdate) => {
-      // Ignore updates for other notes
-      if (update.noteId !== selectedNote.id) return;
-      if (update.type !== 'note-update') return;
-
-      // Ignore updates that contain images
-      if (update.changes.content?.includes('img')) return;
-
-      // Update editor content if it's different
-      const currentEditor = editorRef.current;
-      if (currentEditor && !currentEditor.isDestroyed && update.changes.content !== currentEditor.getHTML()) {
-        currentEditor.commands.setContent(update.changes.content || '');
-      }
-    };
-
-    socketService.onNoteUpdate(handleNoteUpdate);
-    return () => {
-      socketService.offNoteUpdate(handleNoteUpdate);
-    };
-  }, [selectedNote]);
+    if (socket && selectedNote) {
+      socket.emit('join_note', selectedNote.id);
+    }
+  }, [socket, selectedNote]);
 
   // Update note content handler
   const handleNoteUpdate = useCallback(
@@ -299,13 +302,13 @@ const Notes: React.FC = () => {
       if (!editor || editor.isDestroyed) return;
 
       try {
-        const currentNote = notes.find(note => note.id === noteId);
-        if (!currentNote) return;
+        const noteToUpdate = notes.find(note => note.id === noteId);
+        if (!noteToUpdate) return;
 
-        if (currentNote.isLocked) {
+        if (noteToUpdate.isLocked) {
           console.log('Preventing update of locked note:', noteId);
           setError('Cannot edit a locked note');
-          editor.commands.setContent(currentNote.content || '');
+          editor.commands.setContent(noteToUpdate.content || '');
           return;
         }
 
@@ -324,42 +327,29 @@ const Notes: React.FC = () => {
           setSelectedNote(response.data);
         }
 
-        // Only send socket update for text content changes
-        if (!data.content?.includes('img') && socketService.isConnected()) {
-          try {
-            socketService.sendNoteUpdate({
-              type: 'note-update',
-              noteId,
-              changes: {
-                content: data.content,
-                title: data.title,
-                updatedAt: new Date().toISOString()
-              }
-            });
-          } catch (socketError) {
-            console.error('Socket update failed:', socketError);
-          }
+        // Only send real-time updates if content doesn't contain images
+        if (socket && !data.content?.includes('data:image')) {
+          socket.emit('note_change', { 
+            noteId, 
+            data: {
+              ...data,
+              // Strip out any image data from real-time updates
+              content: data.content?.replace(/<img[^>]+>/g, '[image]')
+            }
+          });
         }
       } catch (err: any) {
         console.error('Error updating note:', err);
         setError(err.response?.data?.error || 'Failed to update note');
-        
-        // Restore editor content on error
-        const currentNote = notes.find(note => note.id === noteId);
-        if (currentNote) {
-          editor.commands.setContent(currentNote.content || '');
-        }
       }
     }, 500),
-    [notes, selectedNote]
+    [notes, selectedNote, socket]
   );
 
   // Handle image upload
   const handleImageUpload = useCallback(async (file: File) => {
-    if (!selectedNote || !editorRef.current || editorRef.current.isDestroyed) {
-      setError('Editor not ready');
-      return;
-    }
+    const editor = editorRef.current;
+    if (!selectedNote || !editor || editor.isDestroyed || !isEditorReady) return;
 
     try {
       if (!file.type.startsWith('image/')) {
@@ -368,44 +358,50 @@ const Notes: React.FC = () => {
 
       setLoading(true);
 
-      // Compress image before upload
-      const options = {
-        maxSizeMB: 1,
-        maxWidthOrHeight: 1920,
-        useWebWorker: true
-      };
+      // Compress image
+      const compressedImage = await compressImage(file);
       
-      const compressedFile = await imageCompression(file, options);
-      
-      // Check file size after compression
-      if (compressedFile.size > 1024 * 1024) { // 1MB
+      // Check final size
+      if (compressedImage.length > 100 * 1024) {
         throw new Error('Image is too large. Please use a smaller image.');
       }
-      
-      // Upload to Cloudinary
-      const imageUrl = await uploadImage(compressedFile);
-      
-      // Insert image URL into editor
-      editorRef.current.commands.setImage({ 
-        src: imageUrl,
-        alt: file.name,
-        title: file.name
+
+      // Insert image using insertContent
+      editor.commands.insertContent({
+        type: 'image',
+        attrs: {
+          src: compressedImage,
+          alt: file.name.split('.')[0],
+        }
       });
 
-      // Update note content
-      const content = editorRef.current.getHTML();
-      await handleNoteUpdate(selectedNote.id, { 
-        content,
+      // Wait for next tick to ensure content is updated
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      // Save the updated content
+      const updatedContent = editor.getHTML();
+      
+      // Save directly without real-time updates for image content
+      await updateNote(selectedNote.id, {
+        content: updatedContent,
         updatedAt: new Date()
       });
 
+      // Update local state
+      setNotes(prevNotes => 
+        prevNotes.map(note => 
+          note.id === selectedNote.id 
+            ? { ...note, content: updatedContent, updatedAt: new Date() }
+            : note
+        )
+      );
     } catch (error) {
       console.error('Error uploading image:', error);
-      setError(error instanceof Error ? error.message : 'Failed to upload image');
+      setError(typeof error === 'string' ? error : 'Failed to upload image');
     } finally {
       setLoading(false);
     }
-  }, [selectedNote, handleNoteUpdate]);
+  }, [selectedNote, isEditorReady, notes]);
 
   // Update editor configuration
   const editor = useEditor({
@@ -415,7 +411,6 @@ const Notes: React.FC = () => {
           levels: [1, 2, 3, 4, 5, 6],
         },
         dropcursor: false,
-        codeBlock: false, // Disable codeBlock in StarterKit since we're configuring it separately
       }),
       Placeholder.configure({
         placeholder: ({ editor }) => {
@@ -482,22 +477,14 @@ const Notes: React.FC = () => {
         class: 'prose dark:prose-invert max-w-none focus:outline-none min-h-[200px]',
       },
       handleDrop: (view, event, slice, moved) => {
-        const { state } = view;
-        const coordinates = view.posAtCoords({
-          left: event.clientX,
-          top: event.clientY,
-        });
-
-        if (!coordinates) return false;
-
-        if (!moved && event.dataTransfer?.files?.length) {
+        if (!moved && event.dataTransfer?.files.length) {
           const file = event.dataTransfer.files[0];
-          if (file && file.type.startsWith('image/')) {
+          if (file.type.startsWith('image/')) {
+            event.preventDefault();
             handleImageUpload(file);
             return true;
           }
         }
-
         return false;
       },
       handlePaste: (view, event) => {
@@ -631,29 +618,61 @@ const Notes: React.FC = () => {
   }, [editor, loading, isEditorReady, user?.id]);
 
   // Update handleLockNote to handle unlocking
-  const handleLockNote = async (noteId: string, isLocked: boolean, passcode?: string) => {
+  const handleLockNote = useCallback(async (passcode: string) => {
+    if (!lockModal.id) return;
+    
     try {
-      const response = await updateNote(noteId, {
-        isLocked,
-        lockHash: passcode ? await hashPasscode(passcode) : undefined
-      });
-      
-      setNotes(prevNotes =>
-        prevNotes.map(note =>
-          note.id === noteId ? response.data : note
-        )
-      );
+      setLoading(true);
+      console.log('Processing lock operation:', lockModal.mode, 'for note:', lockModal.id);
 
-      if (selectedNote?.id === noteId) {
+      if (lockModal.mode === 'lock') {
+        // Lock note
+        const response = await lockNote(lockModal.id, passcode);
+        console.log('Note locked successfully:', response.data);
+        
+        // Update notes list with locked note
+        setNotes(prevNotes => prevNotes.map(note => 
+          note.id === lockModal.id ? sanitizeLockedNote(response.data) : note
+        ));
+        
+        // Clear editor and deselect note if it was locked
+        if (selectedNote?.id === lockModal.id) {
+          setSelectedNote(null);
+          if (editor && !editor.isDestroyed) {
+            editor.commands.setContent('');
+            editor.setEditable(false);
+          }
+          localStorage.removeItem('lastSelectedNoteId');
+        }
+      } else {
+        // Unlock note
+        const response = await unlockNote(lockModal.id, passcode);
+        console.log('Note unlocked successfully:', response.data);
+        
+        // Update notes list with unlocked note
+        setNotes(prevNotes => prevNotes.map(note => 
+          note.id === lockModal.id ? response.data : note
+        ));
+        
+        // Update selected note and editor content
         setSelectedNote(response.data);
+        if (editor && !editor.isDestroyed) {
+          editor.commands.setContent(response.data.content || '');
+          editor.setEditable(true);
+        }
       }
 
-      setLockModal({ isOpen: false, noteId: null });
+      // Reset lock modal state
+      setLockModal({ isOpen: false, mode: 'lock', type: 'note', id: null, title: '' });
+      setSelectedLockedNote(null);
+      setError(null);
     } catch (err: any) {
-      console.error('Error locking/unlocking note:', err);
-      setError(err.response?.data?.error || 'Failed to lock/unlock note');
+      console.error('Lock operation failed:', err);
+      setError(err.response?.data?.error || 'Failed to process lock operation');
+    } finally {
+      setLoading(false);
     }
-  };
+  }, [lockModal.id, lockModal.mode, selectedNote?.id, editor]);
 
   // Update filtered notes computation
   const filteredNotes = useMemo(() => {
@@ -694,36 +713,49 @@ const Notes: React.FC = () => {
     setFolderModalOpen(true);
   };
 
-  const handleFolderDelete = (folderId: string, folderName: string) => {
+  const handleFolderDelete = useCallback((folderId: string) => {
     setFolderDeleteConfirmation({
       isOpen: true,
       folderId,
-      folderName,
+      folderName: folders.find(f => f.id === folderId)?.name || ''
     });
-  };
+  }, [folders]);
 
-  const handleFolderSelect = (folderId: string | null) => {
-    if (folderId) {
-      const folder = folders.find(f => f.id === folderId);
-      if (folder) {
-        setSelectedFolder({
-          id: folder.id,
-          name: folder.name,
-          parentId: folder.parentId
-        });
+  const handleFolderSelect = useCallback(async (folderId: string | null) => {
+    if (loading || !isEditorReady) return;
+
+    try {
+      // Clear editor content before changing folder
+      if (editor && !editor.isDestroyed) {
+        editor.commands.clearContent();
       }
-    } else {
-      setSelectedFolder(null);
+
+      setSelectedFolderId(folderId);
+      setSelectedNote(null);
+      
+      if (folderId) {
+        const response = await getNotes({ folderId });
+        setNotes(response.data);
+      } else {
+        const response = await getNotes();
+        setNotes(response.data);
+      }
+    } catch (err: any) {
+      console.error('Error selecting folder:', err);
+      setError(err.response?.data?.error || 'Failed to load notes for folder');
     }
-    setSelectedFolderId(folderId);
-  };
+  }, [loading, isEditorReady, editor]);
 
   // Add note action handlers
   const handleShareNote = useCallback(async (data: { email: string; canEdit: boolean }) => {
     try {
       if (!shareModal.noteId) return;
       await shareNote(shareModal.noteId, data);
-      setShareModal({ isOpen: false, noteId: null, noteTitle: '' });
+      setShareModal({
+        isOpen: false,
+        noteId: null,
+        noteTitle: ''
+      });
     } catch (err: any) {
       console.error('Error sharing note:', err);
       throw err;
@@ -796,11 +828,11 @@ const Notes: React.FC = () => {
     }
   }, [deleteConfirmation.noteId, selectedNote?.id, editor]);
 
-  const handleConfirmShare = useCallback(async (data: { email: string; canEdit: boolean }) => {
+  const handleConfirmShare = useCallback(async (permissions: string[]) => {
     if (!shareModal.noteId) return;
 
     try {
-      await shareNote(shareModal.noteId, data);
+      await shareNote(shareModal.noteId, permissions);
       setShareModal({
         isOpen: false,
         noteId: null,
@@ -926,14 +958,6 @@ const Notes: React.FC = () => {
       const noteToUpdate = notes.find(note => note.id === noteId);
       if (!noteToUpdate) return;
 
-      // Prevent tag updates if note is locked
-      if (noteToUpdate.isLocked) {
-        setError('Cannot modify tags of a locked note');
-        setNewTag('');
-        setShowTagInput(false);
-        return;
-      }
-
       const updatedTags = [...noteToUpdate.tags, tag];
       const response = await updateNote(noteId, {
         tags: updatedTags,
@@ -959,12 +983,6 @@ const Notes: React.FC = () => {
     try {
       const noteToUpdate = notes.find(note => note.id === noteId);
       if (!noteToUpdate) return;
-
-      // Prevent tag updates if note is locked
-      if (noteToUpdate.isLocked) {
-        setError('Cannot modify tags of a locked note');
-        return;
-      }
 
       const updatedTags = noteToUpdate.tags.filter(tag => tag !== tagToRemove);
       const response = await updateNote(noteId, {
@@ -1563,107 +1581,6 @@ const Notes: React.FC = () => {
               <div className="max-w-4xl mx-auto p-6">
                 {selectedNote ? (
                   <>
-                    {/* Note Actions Menu */}
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleStarNote(selectedNote)}
-                          className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
-                          title={selectedNote.starred ? 'Remove from starred' : 'Add to starred'}
-                        >
-                          {selectedNote.starred ? (
-                            <StarIconSolid className="h-5 w-5 text-yellow-500" />
-                          ) : (
-                            <StarIconOutline className="h-5 w-5 text-gray-600 dark:text-gray-300" />
-                          )}
-                        </button>
-                        <button
-                          onClick={() => showLockNoteModal(selectedNote)}
-                          className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
-                          title={selectedNote.isLocked ? 'Unlock note' : 'Lock note'}
-                        >
-                          {selectedNote.isLocked ? (
-                            <LockClosedIcon className="h-5 w-5 text-purple-500" />
-                          ) : (
-                            <LockOpenIcon className="h-5 w-5 text-gray-600 dark:text-gray-300" />
-                          )}
-                        </button>
-                        <button
-                          onClick={() => handleShareClick(selectedNote)}
-                          className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
-                          title="Share note"
-                        >
-                          <ShareIcon className="h-5 w-5 text-gray-600 dark:text-gray-300" />
-                        </button>
-                        <button
-                          onClick={() => setShowTagInput(!showTagInput)}
-                          className={`p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg ${
-                            selectedNote.isLocked ? 'opacity-50 cursor-not-allowed' : ''
-                          }`}
-                          title={selectedNote.isLocked ? 'Cannot modify tags of a locked note' : 'Manage tags'}
-                          disabled={selectedNote.isLocked}
-                        >
-                          <TagIcon className="h-5 w-5 text-gray-600 dark:text-gray-300" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteNote(selectedNote)}
-                          className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
-                          title="Delete note"
-                        >
-                          <TrashIcon className="h-5 w-5 text-red-500" />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Tags Input */}
-                    <AnimatePresence>
-                      {showTagInput && (
-                        <motion.div
-                          initial={{ opacity: 0, height: 0 }}
-                          animate={{ opacity: 1, height: 'auto' }}
-                          exit={{ opacity: 0, height: 0 }}
-                          className="mb-4"
-                        >
-                          <div className="flex flex-wrap gap-2 mb-2">
-                            {selectedNote.tags.map((tag) => (
-                              <div
-                                key={tag}
-                                className="flex items-center gap-1 px-2 py-1 bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-300 rounded-lg text-sm"
-                              >
-                                <span>{tag}</span>
-                                <button
-                                  onClick={() => removeTag(selectedNote.id, tag)}
-                                  className="hover:text-purple-800 dark:hover:text-purple-100"
-                                >
-                                  ×
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                          <div className="flex gap-2">
-                            <input
-                              type="text"
-                              value={newTag}
-                              onChange={(e) => setNewTag(e.target.value)}
-                              onKeyPress={(e) => {
-                                if (e.key === 'Enter') {
-                                  addTag(selectedNote.id, newTag);
-                                }
-                              }}
-                              placeholder="Add a tag..."
-                              className="flex-1 px-3 py-2 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                            />
-                            <button
-                              onClick={() => addTag(selectedNote.id, newTag)}
-                              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
-                            >
-                              Add
-                            </button>
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-
                     {/* Note Title */}
                     <input
                       type="text"

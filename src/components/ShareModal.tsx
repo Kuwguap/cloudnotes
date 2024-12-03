@@ -8,24 +8,20 @@ interface ShareModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (data: { email: string; canEdit: boolean }) => Promise<void>;
+  title: string;
+  sharedWith?: NoteShare[];
   onRemoveShare?: (userId: string) => Promise<void>;
   onUpdatePermissions?: (userId: string, canEdit: boolean) => Promise<void>;
-  title: string;
-  noteId?: string | null;
-  noteTitle: string;
-  sharedWith?: NoteShare[];
 }
 
 const ShareModal: React.FC<ShareModalProps> = ({
   isOpen,
   onClose,
   onSubmit,
+  title,
+  sharedWith = [],
   onRemoveShare,
   onUpdatePermissions,
-  title,
-  noteId,
-  noteTitle,
-  sharedWith = []
 }) => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -159,7 +155,7 @@ const ShareModal: React.FC<ShareModalProps> = ({
                     Shared with
                   </h4>
                   <div className="space-y-2">
-                    {sharedWith.map((share: NoteShare) => (
+                    {sharedWith.map((share) => (
                       <div
                         key={share.id}
                         className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-700 rounded-md"
