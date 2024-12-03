@@ -34,7 +34,7 @@ module.exports = {
   output: {
     path: path.resolve(__dirname, 'dist'),
     filename: isProd ? 'js/[name].[contenthash].js' : 'js/[name].js',
-    publicPath: isProd ? '' : '/',
+    publicPath: isProd ? '/' : '/',
     clean: true
   },
   module: {
@@ -46,8 +46,12 @@ module.exports = {
           loader: 'babel-loader',
           options: {
             presets: [
+              ['@babel/preset-env', { targets: { node: 'current' } }],
               '@babel/preset-react',
               '@babel/preset-typescript'
+            ],
+            plugins: [
+              '@babel/plugin-transform-runtime'
             ]
           }
         }
@@ -90,7 +94,8 @@ module.exports = {
         minifyJS: true,
         minifyCSS: true,
         minifyURLs: true,
-      } : false
+      } : false,
+      inject: true
     }),
     new CopyWebpackPlugin({
       patterns: [
