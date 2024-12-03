@@ -293,7 +293,7 @@ const Notes: React.FC = () => {
 
   // Update note content handler
   const handleNoteUpdate = useCallback(
-    debounce(async (noteId: string, data: Partial<Note> & { passcode?: string }) => {
+    debounce(async (noteId: string, data: Partial<Note>) => {
       const editor = editorRef.current;
       if (!editor || editor.isDestroyed) return;
 
@@ -344,6 +344,7 @@ const Notes: React.FC = () => {
         setError(err.response?.data?.error || 'Failed to update note');
         
         // Restore editor content on error
+        const currentNote = notes.find(note => note.id === noteId);
         if (currentNote) {
           editor.commands.setContent(currentNote.content || '');
         }
@@ -387,8 +388,7 @@ const Notes: React.FC = () => {
       editorRef.current.commands.setImage({ 
         src: imageUrl,
         alt: file.name,
-        title: file.name,
-        class: 'rounded-lg max-w-full h-auto my-4'
+        title: file.name
       });
 
       // Update note content
@@ -480,12 +480,12 @@ const Notes: React.FC = () => {
       attributes: {
         class: 'prose dark:prose-invert max-w-none focus:outline-none min-h-[200px]',
       },
-      handleDrop: (view, event, slice, moved) => {
+      handleDrop: async (view, event, slice, moved) => {
         if (!moved && event.dataTransfer?.files.length) {
           const file = event.dataTransfer.files[0];
           if (file.type.startsWith('image/')) {
             event.preventDefault();
-            handleImageUpload(file);
+            await handleImageUpload(file);
             return true;
           }
         }
@@ -1456,7 +1456,7 @@ const Notes: React.FC = () => {
                 onFolderSelect={handleFolderSelect}
                 onCreateFolder={handleCreateFolder}
                 onEditFolder={handleEditFolder}
-                onDeleteFolder={(folderId: string) => handleFolderDelete(folderId, '')}
+                onDeleteFolder={handleFolderDelete}
               />
             </div>
 
