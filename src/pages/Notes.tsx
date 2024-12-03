@@ -67,6 +67,7 @@ import { createPortal } from 'react-dom';
 import imageCompression from 'browser-image-compression';
 import { socketService, type NoteUpdate } from '../services/socketService';
 import { uploadImage } from '../services/cloudinary';
+import { hashPasscode } from '../utils/hashPasscode';
 
 interface Category {
   id: string;
@@ -480,15 +481,23 @@ const Notes: React.FC = () => {
       attributes: {
         class: 'prose dark:prose-invert max-w-none focus:outline-none min-h-[200px]',
       },
-      handleDrop: async (view, event, slice, moved) => {
-        if (!moved && event.dataTransfer?.files.length) {
+      handleDrop: (view, event, slice, moved) => {
+        const { state } = view;
+        const coordinates = view.posAtCoords({
+          left: event.clientX,
+          top: event.clientY,
+        });
+
+        if (!coordinates) return false;
+
+        if (!moved && event.dataTransfer?.files?.length) {
           const file = event.dataTransfer.files[0];
-          if (file.type.startsWith('image/')) {
-            event.preventDefault();
-            await handleImageUpload(file);
+          if (file && file.type.startsWith('image/')) {
+            handleImageUpload(file);
             return true;
           }
         }
+
         return false;
       },
       handlePaste: (view, event) => {
@@ -622,61 +631,29 @@ const Notes: React.FC = () => {
   }, [editor, loading, isEditorReady, user?.id]);
 
   // Update handleLockNote to handle unlocking
-  const handleLockNote = useCallback(async (passcode: string) => {
-    if (!lockModal.id) return;
-    
+  const handleLockNote = async (noteId: string, isLocked: boolean, passcode?: string) => {
     try {
-      setLoading(true);
-      console.log('Processing lock operation:', lockModal.mode, 'for note:', lockModal.id);
+      const updatedNote = await updateNote(noteId, {
+        isLocked,
+        lockHash: passcode ? await hashPasscode(passcode) : undefined
+      });
+      
+      setNotes(prevNotes =>
+        prevNotes.map(note =>
+          note.id === noteId ? updatedNote : note
+        )
+      );
 
-      if (lockModal.mode === 'lock') {
-        // Lock note
-        const response = await lockNote(lockModal.id, passcode);
-        console.log('Note locked successfully:', response.data);
-        
-        // Update notes list with locked note
-        setNotes(prevNotes => prevNotes.map(note => 
-          note.id === lockModal.id ? sanitizeLockedNote(response.data) : note
-        ));
-        
-        // Clear editor and deselect note if it was locked
-        if (selectedNote?.id === lockModal.id) {
-          setSelectedNote(null);
-          if (editor && !editor.isDestroyed) {
-            editor.commands.setContent('');
-            editor.setEditable(false);
-          }
-          localStorage.removeItem('lastSelectedNoteId');
-        }
-      } else {
-        // Unlock note
-        const response = await unlockNote(lockModal.id, passcode);
-        console.log('Note unlocked successfully:', response.data);
-        
-        // Update notes list with unlocked note
-        setNotes(prevNotes => prevNotes.map(note => 
-          note.id === lockModal.id ? response.data : note
-        ));
-        
-        // Update selected note and editor content
-        setSelectedNote(response.data);
-        if (editor && !editor.isDestroyed) {
-          editor.commands.setContent(response.data.content || '');
-          editor.setEditable(true);
-        }
+      if (selectedNote?.id === noteId) {
+        setSelectedNote(updatedNote);
       }
 
-      // Reset lock modal state
-      setLockModal({ isOpen: false, mode: 'lock', type: 'note', id: null, title: '' });
-      setSelectedLockedNote(null);
-      setError(null);
+      setLockModal({ isOpen: false, noteId: null });
     } catch (err: any) {
-      console.error('Lock operation failed:', err);
-      setError(err.response?.data?.error || 'Failed to process lock operation');
-    } finally {
-      setLoading(false);
+      console.error('Error locking/unlocking note:', err);
+      setError(err.response?.data?.error || 'Failed to lock/unlock note');
     }
-  }, [lockModal.id, lockModal.mode, selectedNote?.id, editor]);
+  };
 
   // Update filtered notes computation
   const filteredNotes = useMemo(() => {
@@ -725,30 +702,13 @@ const Notes: React.FC = () => {
     });
   };
 
-  const handleFolderSelect = useCallback(async (folderId: string | null) => {
-    if (loading || !isEditorReady) return;
-
-    try {
-      // Clear editor content before changing folder
-      if (editor && !editor.isDestroyed) {
-        editor.commands.clearContent();
-      }
-
+  const handleFolderSelect = (folderId: string) => {
+    const folder = folders.find(f => f.id === folderId);
+    if (folder) {
+      setSelectedFolder(folder);
       setSelectedFolderId(folderId);
-      setSelectedNote(null);
-      
-      if (folderId) {
-        const response = await getNotes({ folderId });
-        setNotes(response.data);
-      } else {
-        const response = await getNotes();
-        setNotes(response.data);
-      }
-    } catch (err: any) {
-      console.error('Error selecting folder:', err);
-      setError(err.response?.data?.error || 'Failed to load notes for folder');
     }
-  }, [loading, isEditorReady, editor]);
+  };
 
   // Add note action handlers
   const handleShareNote = useCallback(async (data: { email: string; canEdit: boolean }) => {
