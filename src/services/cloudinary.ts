@@ -1,4 +1,4 @@
-const CLOUDINARY_CLOUD_NAME = 'dmyhjnaao';
+const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || window.env?.VITE_CLOUDINARY_CLOUD_NAME || 'dmyhjnaao';
 const CLOUDINARY_UPLOAD_PRESET = 'cloudnotes_unsigned';
 
 interface CloudinaryResponse {

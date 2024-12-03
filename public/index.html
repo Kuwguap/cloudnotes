@@ -9,36 +9,16 @@
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
     <title>CloudNotes</title>
     <script>
-        try {
-            window.env = {
-                VITE_API_URL: "https://cloudnotes-production.up.railway.app/api",
-                VITE_SOCKET_URL: "https://cloudnotes-production.up.railway.app",
-                VITE_CLOUDINARY_CLOUD_NAME: "dmyhjnaao",
-                VITE_CLOUDINARY_API_KEY: "684187234357236"
-            };
-            console.log('Environment variables loaded:', window.env);
-        } catch (error) {
-            console.error('Error loading environment variables:', error);
-        }
+        window.env = {
+            VITE_API_URL: "%VITE_API_URL%",
+            VITE_SOCKET_URL: "%VITE_SOCKET_URL%",
+            VITE_CLOUDINARY_CLOUD_NAME: "%VITE_CLOUDINARY_CLOUD_NAME%",
+            VITE_CLOUDINARY_API_KEY: "%VITE_CLOUDINARY_API_KEY%"
+        };
     </script>
 </head>
 <body>
     <div id="root"></div>
     <noscript>You need to enable JavaScript to run this app.</noscript>
-    <script>
-        window.onerror = function(msg, url, lineNo, columnNo, error) {
-            console.error('Error: ' + msg + '\nURL: ' + url + '\nLine: ' + lineNo + '\nColumn: ' + columnNo + '\nError object: ' + JSON.stringify(error));
-            return false;
-        };
-
-        window.addEventListener('unhandledrejection', function(event) {
-            console.error('Unhandled promise rejection:', event.reason);
-        });
-
-        // Add additional error logging
-        window.addEventListener('error', function(event) {
-            console.error('Global error:', event.error);
-        });
-    </script>
 </body>
 </html> 
