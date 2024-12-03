@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, useNavigate } from 'react-route
 import { CloudArrowUpIcon, LockClosedIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import Auth from './pages/Auth';
 import Notes from './pages/Notes';
+import ErrorBoundary from './components/ErrorBoundary';
 
 // Separate Landing component
 const Landing: React.FC = () => {
@@ -173,18 +174,30 @@ const App: React.FC = () => {
     } else {
       document.documentElement.classList.remove('dark');
     }
+
+    // Log environment variables in development
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Environment:', {
+        API_URL: import.meta.env.VITE_API_URL,
+        SOCKET_URL: import.meta.env.VITE_SOCKET_URL,
+        CLOUDINARY_CLOUD_NAME: import.meta.env.VITE_CLOUDINARY_CLOUD_NAME,
+        CLOUDINARY_API_KEY: import.meta.env.VITE_CLOUDINARY_API_KEY,
+      });
+    }
   }, []);
 
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-900">
-      <Router>
-        <Routes>
-          <Route path="/" element={<Landing />} />
-          <Route path="/auth" element={<Auth />} />
-          <Route path="/notes" element={<Notes />} />
-        </Routes>
-      </Router>
-    </div>
+    <ErrorBoundary>
+      <div className="min-h-screen bg-white dark:bg-gray-900">
+        <Router>
+          <Routes>
+            <Route path="/" element={<Landing />} />
+            <Route path="/auth" element={<Auth />} />
+            <Route path="/notes" element={<Notes />} />
+          </Routes>
+        </Router>
+      </div>
+    </ErrorBoundary>
   );
 };
 

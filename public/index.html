@@ -9,12 +9,17 @@
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
     <title>CloudNotes</title>
     <script>
-        window.env = {
-            VITE_API_URL: "https://cloudnotes-production.up.railway.app/api",
-            VITE_SOCKET_URL: "https://cloudnotes-production.up.railway.app",
-            VITE_CLOUDINARY_CLOUD_NAME: "dmyhjnaao",
-            VITE_CLOUDINARY_API_KEY: "684187234357236"
-        };
+        try {
+            window.env = {
+                VITE_API_URL: "https://cloudnotes-production.up.railway.app/api",
+                VITE_SOCKET_URL: "https://cloudnotes-production.up.railway.app",
+                VITE_CLOUDINARY_CLOUD_NAME: "dmyhjnaao",
+                VITE_CLOUDINARY_API_KEY: "684187234357236"
+            };
+            console.log('Environment variables loaded:', window.env);
+        } catch (error) {
+            console.error('Error loading environment variables:', error);
+        }
     </script>
 </head>
 <body>
@@ -28,6 +33,11 @@
 
         window.addEventListener('unhandledrejection', function(event) {
             console.error('Unhandled promise rejection:', event.reason);
+        });
+
+        // Add additional error logging
+        window.addEventListener('error', function(event) {
+            console.error('Global error:', event.error);
         });
     </script>
 </body>

@@ -6,13 +6,35 @@ const webpack = require('webpack');
 
 const isProd = process.env.NODE_ENV === 'production';
 
+// Get environment variables from window.env in development
+const getEnvVars = () => {
+  if (!isProd) {
+    return {
+      'process.env': JSON.stringify(process.env),
+      'import.meta.env.VITE_API_URL': JSON.stringify(process.env.VITE_API_URL || 'http://localhost:5000/api'),
+      'import.meta.env.VITE_SOCKET_URL': JSON.stringify(process.env.VITE_SOCKET_URL || 'http://localhost:5000'),
+      'import.meta.env.VITE_CLOUDINARY_CLOUD_NAME': JSON.stringify(process.env.VITE_CLOUDINARY_CLOUD_NAME),
+      'import.meta.env.VITE_CLOUDINARY_API_KEY': JSON.stringify(process.env.VITE_CLOUDINARY_API_KEY),
+    };
+  }
+  
+  // In production, use window.env values
+  return {
+    'process.env': JSON.stringify(process.env),
+    'import.meta.env.VITE_API_URL': 'window.env.VITE_API_URL',
+    'import.meta.env.VITE_SOCKET_URL': 'window.env.VITE_SOCKET_URL',
+    'import.meta.env.VITE_CLOUDINARY_CLOUD_NAME': 'window.env.VITE_CLOUDINARY_CLOUD_NAME',
+    'import.meta.env.VITE_CLOUDINARY_API_KEY': 'window.env.VITE_CLOUDINARY_API_KEY',
+  };
+};
+
 module.exports = {
   mode: isProd ? 'production' : 'development',
   entry: './src/index.tsx',
   output: {
     path: path.resolve(__dirname, 'dist'),
     filename: isProd ? 'js/[name].[contenthash].js' : 'js/[name].js',
-    publicPath: '/',
+    publicPath: isProd ? '' : '/',
     clean: true
   },
   module: {
@@ -53,9 +75,7 @@ module.exports = {
     }
   },
   plugins: [
-    new webpack.DefinePlugin({
-      'process.env': JSON.stringify(process.env)
-    }),
+    new webpack.DefinePlugin(getEnvVars()),
     new HtmlWebpackPlugin({
       template: './public/index.html',
       favicon: './public/favicon.ico',
