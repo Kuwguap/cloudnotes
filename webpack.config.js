@@ -1,12 +1,19 @@
 const path = require('path');
+const HtmlWebpackPlugin = require('html-webpack-plugin');
+const MiniCssExtractPlugin = require('mini-css-extract-plugin');
+const CopyWebpackPlugin = require('copy-webpack-plugin');
+const webpack = require('webpack');
+
+const isProd = process.env.NODE_ENV === 'production';
 
 module.exports = {
-  mode: 'development',
+  mode: isProd ? 'production' : 'development',
   entry: './src/index.tsx',
   output: {
     path: path.resolve(__dirname, 'dist'),
-    filename: 'bundle.js',
+    filename: isProd ? 'js/[name].[contenthash].js' : 'js/[name].js',
     publicPath: '/',
+    clean: true
   },
   module: {
     rules: [
@@ -25,7 +32,8 @@ module.exports = {
       },
       {
         test: /\.css$/i,
-        use: ['style-loader', 
+        use: [
+          isProd ? MiniCssExtractPlugin.loader : 'style-loader',
           {
             loader: 'css-loader',
             options: {
@@ -38,44 +46,84 @@ module.exports = {
     ]
   },
   resolve: {
-    extensions: ['.tsx', '.ts', '.js'],
+    extensions: ['.tsx', '.ts', '.js', '.jsx'],
+    fallback: {
+      "path": false,
+      "fs": false
+    }
+  },
+  plugins: [
+    new webpack.DefinePlugin({
+      'process.env': JSON.stringify(process.env)
+    }),
+    new HtmlWebpackPlugin({
+      template: './public/index.html',
+      favicon: './public/favicon.ico',
+      minify: isProd ? {
+        removeComments: true,
+        collapseWhitespace: true,
+        removeRedundantAttributes: true,
+        useShortDoctype: true,
+        removeEmptyAttributes: true,
+        removeStyleLinkTypeAttributes: true,
+        keepClosingSlash: true,
+        minifyJS: true,
+        minifyCSS: true,
+        minifyURLs: true,
+      } : false
+    }),
+    new CopyWebpackPlugin({
+      patterns: [
+        {
+          from: 'public',
+          to: '',
+          globOptions: {
+            ignore: ['**/index.html', '**/favicon.ico']
+          }
+        }
+      ]
+    }),
+    ...(isProd ? [new MiniCssExtractPlugin({
+      filename: 'css/[name].[contenthash].css'
+    })] : [])
+  ],
+  optimization: {
+    splitChunks: {
+      chunks: 'all',
+      maxInitialRequests: Infinity,
+      minSize: 20000,
+      cacheGroups: {
+        vendor: {
+          test: /[\\/]node_modules[\\/]/,
+          name(module) {
+            const packageName = module.context.match(/[\\/]node_modules[\\/](.*?)([\\/]|$)/)[1];
+            return `vendor.${packageName.replace('@', '')}`;
+          },
+          chunks: 'all',
+        },
+        common: {
+          name: 'common',
+          minChunks: 2,
+          chunks: 'all',
+          priority: -10
+        }
+      },
+    },
+    runtimeChunk: 'single',
+    minimize: isProd,
+    moduleIds: 'deterministic'
   },
   devServer: {
     static: {
       directory: path.join(__dirname, 'public'),
-      watch: {
-        ignored: [
-          '**/node_modules/**',
-          '**/public/service-worker.js',
-          '**/dist/**',
-          '**/.git/**',
-          '**/*.hot-update.*'
-        ],
-      }
     },
     port: 3001,
-    hot: 'only',
+    hot: true,
     historyApiFallback: true,
     open: true,
-    devMiddleware: {
-      writeToDisk: false,
-    },
     client: {
-      overlay: true,
-      progress: true,
-      reconnect: true,
-    },
+      overlay: true
+    }
   },
-  devtool: 'eval-source-map',
-  watchOptions: {
-    ignored: [
-      '**/node_modules/**',
-      '**/public/service-worker.js',
-      '**/dist/**',
-      '**/.git/**',
-      '**/*.hot-update.*'
-    ],
-    aggregateTimeout: 1000,
-    poll: false,
-  },
+  devtool: isProd ? 'source-map' : 'eval-source-map'
 }; 

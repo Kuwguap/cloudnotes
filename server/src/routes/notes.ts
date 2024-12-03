@@ -2,6 +2,7 @@ import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import { authenticateToken } from '../middleware/auth';
 import bcrypt from 'bcrypt';
+import { AuthRequest } from '../types';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -38,7 +39,7 @@ const sanitizeNote = (note: any, userId: string) => {
 };
 
 // Get all notes
-router.get('/', authenticateToken, async (req: any, res) => {
+router.get('/', authenticateToken, async (req: AuthRequest, res) => {
   try {
     console.log('Fetching notes for user:', req.user.id);
     const notes = await prisma.note.findMany({
@@ -106,7 +107,7 @@ router.get('/', authenticateToken, async (req: any, res) => {
 });
 
 // Get single note
-router.get('/:id', authenticateToken, async (req: any, res) => {
+router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
     const note = await prisma.note.findUnique({
@@ -156,7 +157,7 @@ router.get('/:id', authenticateToken, async (req: any, res) => {
 });
 
 // Lock note
-router.post('/:id/lock', authenticateToken, async (req: any, res) => {
+router.post('/:id/lock', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
     const { passcode } = req.body;
@@ -230,7 +231,7 @@ router.post('/:id/lock', authenticateToken, async (req: any, res) => {
 });
 
 // Unlock note
-router.post('/:id/unlock', authenticateToken, async (req: any, res) => {
+router.post('/:id/unlock', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
     const { passcode } = req.body;
@@ -323,7 +324,7 @@ router.post('/:id/unlock', authenticateToken, async (req: any, res) => {
 });
 
 // Create note
-router.post('/', authenticateToken, async (req: any, res) => {
+router.post('/', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const { 
       title, 
@@ -387,13 +388,26 @@ router.post('/', authenticateToken, async (req: any, res) => {
 });
 
 // Update note
-router.put('/:id', authenticateToken, async (req, res) => {
+router.put('/:id', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
     const userId = req.user?.id;
-    const { content, title, description, color, category, tags, starred, isArchived, isPinned, isLocked, lockHash, folderId } = req.body;
+    const {
+      content,
+      title,
+      description,
+      color,
+      category,
+      tags,
+      isLocked,
+      lockHash,
+      starred,
+      isArchived,
+      isPinned,
+      folderId
+    } = req.body;
 
-    // Verify user has access to the note
+    // First check if note exists and user has access
     const note = await prisma.note.findFirst({
       where: {
         id,
@@ -434,35 +448,17 @@ router.put('/:id', authenticateToken, async (req, res) => {
         description,
         color,
         category,
-        tags: tags ? { set: tags } : undefined,
+        tags,
+        isLocked,
+        lockHash,
         starred,
         isArchived,
         isPinned,
-        isLocked,
-        lockHash,
-        updatedAt: new Date(),
-        folderId
-      },
-      include: {
-        author: {
-          select: {
-            id: true,
-            name: true,
-            email: true
-          }
+        folderId,
+        version: {
+          increment: 1
         },
-        folder: true,
-        sharedWith: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                email: true
-              }
-            }
-          }
-        }
+        updatedAt: new Date()
       }
     });
 
@@ -474,7 +470,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
 });
 
 // Delete note
-router.delete('/:id', authenticateToken, async (req: any, res) => {
+router.delete('/:id', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
     
@@ -517,7 +513,7 @@ router.delete('/:id', authenticateToken, async (req: any, res) => {
 });
 
 // Share note
-router.post('/:id/share', authenticateToken, async (req: any, res) => {
+router.post('/:id/share', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
     const { email, canEdit } = req.body;
@@ -627,7 +623,7 @@ router.post('/:id/share', authenticateToken, async (req: any, res) => {
 });
 
 // Remove share
-router.delete('/:id/share/:userId', authenticateToken, async (req: any, res) => {
+router.delete('/:id/share/:userId', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const { id, userId } = req.params;
 
@@ -678,7 +674,7 @@ router.delete('/:id/share/:userId', authenticateToken, async (req: any, res) => 
 });
 
 // Update share permissions
-router.put('/:id/share/:userId', authenticateToken, async (req: any, res) => {
+router.put('/:id/share/:userId', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const { id, userId } = req.params;
     const { canEdit } = req.body;
