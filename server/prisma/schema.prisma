@@ -1,0 +1,106 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String?
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  notes     Note[]
+  folders   Folder[]
+  sharedNotes NoteShare[]
+  preferences UserPreferences?
+}
+
+model UserPreferences {
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id])
+  theme         String   @default("light")
+  fontSize      Int      @default(14)
+  defaultView   String   @default("list")
+  sidebarOpen   Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Folder {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  color       String?
+  icon        String?
+  parentId    String?
+  parent      Folder?  @relation("FolderHierarchy", fields: [parentId], references: [id])
+  subfolders  Folder[] @relation("FolderHierarchy")
+  notes       Note[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  isArchived  Boolean  @default(false)
+  isLocked    Boolean  @default(false)
+  lockHash    String?  // Stores hashed passcode
+  
+  @@index([userId])
+}
+
+model Note {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  content     String
+  color       String?
+  category    String?
+  tags        String[]
+  starred     Boolean  @default(false)
+  isArchived  Boolean  @default(false)
+  isPinned    Boolean  @default(false)
+  isLocked    Boolean  @default(false)
+  lockHash    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  lastAccessed DateTime @default(now())
+  authorId    String
+  folderId    String?
+  folder      Folder?  @relation(fields: [folderId], references: [id])
+  author      User     @relation(fields: [authorId], references: [id])
+  sharedWith  NoteShare[]
+  collaborators CollaborationSession[]
+  version     Int      @default(1)
+
+  @@index([authorId])
+  @@index([folderId])
+}
+
+model NoteShare {
+  id        String   @id @default(uuid())
+  noteId    String
+  userId    String
+  note      Note     @relation(fields: [noteId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+  canEdit   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  expiresAt DateTime?
+
+  @@unique([noteId, userId])
+}
+
+model CollaborationSession {
+  id        String   @id @default(uuid())
+  noteId    String
+  userId    String
+  note      Note     @relation(fields: [noteId], references: [id])
+  socketId  String
+  lastSeen  DateTime @default(now())
+
+  @@index([noteId])
+} 
