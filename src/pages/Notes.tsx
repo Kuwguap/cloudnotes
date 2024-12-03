@@ -168,6 +168,17 @@ const compressImage = async (file: File): Promise<string> => {
   }
 };
 
+interface LockModalState {
+  isOpen: boolean;
+  noteId: string | null;
+}
+
+interface FolderState {
+  id: string;
+  name: string;
+  parentId: string | null;
+}
+
 const Notes: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
@@ -188,6 +199,7 @@ const Notes: React.FC = () => {
   const [isCollaborating, setIsCollaborating] = useState(false);
   const [activeCollaborators, setActiveCollaborators] = useState<{[noteId: string]: User[]}>({});
   const [folders, setFolders] = useState<Folder[]>([]);
+  const [selectedFolder, setSelectedFolder] = useState<FolderState | null>(null);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [folderModalOpen, setFolderModalOpen] = useState(false);
   const [editingFolder, setEditingFolder] = useState<Folder | null>(null);
@@ -209,19 +221,7 @@ const Notes: React.FC = () => {
     noteId: null,
     noteTitle: '',
   });
-  const [lockModal, setLockModal] = useState<{
-    isOpen: boolean;
-    mode: 'lock' | 'unlock';
-    type: 'note' | 'folder';
-    id: string | null;
-    title: string;
-  }>({
-    isOpen: false,
-    mode: 'lock',
-    type: 'note',
-    id: null,
-    title: '',
-  });
+  const [lockModal, setLockModal] = useState<LockModalState>({ isOpen: false, noteId: null });
   const [selectedLockedNote, setSelectedLockedNote] = useState<Note | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [shareModal, setShareModal] = useState<{
@@ -633,19 +633,19 @@ const Notes: React.FC = () => {
   // Update handleLockNote to handle unlocking
   const handleLockNote = async (noteId: string, isLocked: boolean, passcode?: string) => {
     try {
-      const updatedNote = await updateNote(noteId, {
+      const response = await updateNote(noteId, {
         isLocked,
         lockHash: passcode ? await hashPasscode(passcode) : undefined
       });
       
       setNotes(prevNotes =>
         prevNotes.map(note =>
-          note.id === noteId ? updatedNote : note
+          note.id === noteId ? response.data : note
         )
       );
 
       if (selectedNote?.id === noteId) {
-        setSelectedNote(updatedNote);
+        setSelectedNote(response.data);
       }
 
       setLockModal({ isOpen: false, noteId: null });
@@ -702,12 +702,20 @@ const Notes: React.FC = () => {
     });
   };
 
-  const handleFolderSelect = (folderId: string) => {
-    const folder = folders.find(f => f.id === folderId);
-    if (folder) {
-      setSelectedFolder(folder);
-      setSelectedFolderId(folderId);
+  const handleFolderSelect = (folderId: string | null) => {
+    if (folderId) {
+      const folder = folders.find(f => f.id === folderId);
+      if (folder) {
+        setSelectedFolder({
+          id: folder.id,
+          name: folder.name,
+          parentId: folder.parentId
+        });
+      }
+    } else {
+      setSelectedFolder(null);
     }
+    setSelectedFolderId(folderId);
   };
 
   // Add note action handlers
