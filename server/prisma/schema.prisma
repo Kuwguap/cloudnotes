@@ -5,6 +5,7 @@ datasource db {
 
 generator client {
   provider = "prisma-client-js"
+  previewFeatures = ["metrics"]
 }
 
 model User {
@@ -56,4 +57,6 @@ model NoteShare {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([noteId, userId])
-} 
+}
+
+// ... rest of your models 
