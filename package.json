@@ -1,11 +1,13 @@
 {
-  "name": "tsx-project",
+  "name": "cloudnotes",
   "version": "1.0.0",
   "description": "A TypeScript React project",
   "main": "index.js",
   "scripts": {
-    "start": "webpack serve --mode development --open",
-    "build": "webpack --mode production"
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "serve": "vite preview",
+    "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
   },
   "keywords": [
     "TypeScript",
