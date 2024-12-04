@@ -3,7 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import routes from './routes';
 import { errorHandler } from './middleware/errorHandler';
 
@@ -19,21 +19,23 @@ const httpServer = createServer(app);
 // Get database URL based on environment
 const getDatabaseUrl = () => {
   if (process.env.RAILWAY_ENVIRONMENT === 'production') {
-    // Use RAILWAY_PUBLIC_DATABASE_URL if available
-    if (process.env.RAILWAY_PUBLIC_DATABASE_URL) {
-      console.log('Using RAILWAY_PUBLIC_DATABASE_URL');
-      return process.env.RAILWAY_PUBLIC_DATABASE_URL;
+    const dbUrl = process.env.DATABASE_URL;
+    if (!dbUrl) {
+      throw new Error('DATABASE_URL is not configured');
     }
-    
-    // Fall back to transforming DATABASE_URL if needed
-    if (process.env.DATABASE_URL) {
-      const publicUrl = process.env.DATABASE_URL.replace(
+
+    // Handle different Railway database URL formats
+    if (dbUrl.includes('postgresql.railway.internal')) {
+      const publicUrl = dbUrl.replace(
         'postgresql.railway.internal',
-        process.env.RAILWAY_STATIC_URL || 'railway.app'
+        'railway.app'
       );
-      console.log('Using transformed DATABASE_URL for Railway');
+      console.log('Using transformed Railway DATABASE_URL');
       return publicUrl;
     }
+    
+    console.log('Using original DATABASE_URL');
+    return dbUrl;
   }
   
   console.log('Using default DATABASE_URL');
@@ -47,6 +49,21 @@ const prisma = new PrismaClient({
     db: {
       url: getDatabaseUrl()
     }
+  }
+});
+
+// Prisma error handling middleware
+prisma.$use(async (params, next) => {
+  try {
+    return await next(params);
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientInitializationError ||
+        error instanceof Prisma.PrismaClientKnownRequestError) {
+      console.error('Database error:', error.message);
+      // Attempt to reconnect
+      await prisma.$connect();
+    }
+    throw error;
   }
 });
 
@@ -68,10 +85,21 @@ async function testDbConnection(retries = 5, delay = 5000) {
       if (!dbUrl) {
         throw new Error('Database URL is not configured');
       }
-      // Only log the host part of the URL for security
-      const sanitizedUrl = dbUrl.replace(/:[^:@]+@/, ':****@');
-      console.log('Using database URL:', sanitizedUrl);
-      await prisma.$connect();
+      
+      // Test the connection with a simple query
+      await prisma.$executeRaw`SELECT 1`;
+      
+      // Set up connection error handler
+      prisma.$on('error', async (e) => {
+        console.error('Prisma Client error:', e);
+        try {
+          await prisma.$connect();
+          console.log('Reconnected to database after error');
+        } catch (reconnectError) {
+          console.error('Failed to reconnect:', reconnectError);
+        }
+      });
+
       console.log('Successfully connected to database');
       return true;
     } catch (error) {
