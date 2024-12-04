@@ -1,58 +1,64 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { authenticateToken, isAdmin } from '../middleware/auth';
 
 const router = Router();
 const prisma = new PrismaClient();
 
-// Get system stats
-router.get('/stats', authenticateToken, isAdmin, async (_req, res) => {
+// Get admin stats
+router.get('/stats', authenticateToken, isAdmin, async (req: Request, res: Response) => {
   try {
     const [
       totalUsers,
       totalNotes,
-      totalSharedNotes,
-      categoryStats
+      totalFolders,
+      recentUsers,
+      recentNotes
     ] = await Promise.all([
-      // Total users
       prisma.user.count(),
-      
-      // Total notes
       prisma.note.count(),
-      
-      // Total shared notes
-      prisma.note.count({
-        where: {
-          sharedWith: {
-            some: {}
-          }
+      prisma.folder.count(),
+      prisma.user.findMany({
+        take: 5,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          createdAt: true
         }
       }),
-      
-      // Notes by category
-      prisma.note.groupBy({
-        by: ['category'],
-        _count: true,
-        where: {
-          category: {
-            not: null
+      prisma.note.findMany({
+        take: 5,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          title: true,
+          createdAt: true,
+          author: {
+            select: {
+              name: true,
+              email: true
+            }
           }
-        },
-        orderBy: {
-          category: 'asc'
         }
       })
     ]);
 
     res.json({
-      totalUsers,
-      totalNotes,
-      totalSharedNotes,
-      categoryStats
+      stats: {
+        totalUsers,
+        totalNotes,
+        totalFolders
+      },
+      recentActivity: {
+        users: recentUsers,
+        notes: recentNotes
+      }
     });
   } catch (error) {
-    console.error('Error getting admin stats:', error);
-    res.status(500).json({ error: 'Failed to get admin statistics' });
+    console.error('Error fetching admin stats:', error);
+    res.status(500).json({ error: 'Failed to fetch admin stats' });
   }
 });
 

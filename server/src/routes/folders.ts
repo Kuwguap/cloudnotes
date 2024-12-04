@@ -5,28 +5,28 @@ import { authenticateToken } from '../middleware/auth';
 const router = Router();
 const prisma = new PrismaClient();
 
-// Get all notes
+// Get all folders
 router.get('/', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const notes = await prisma.note.findMany({
+    const folders = await prisma.folder.findMany({
       where: {
         authorId: req.user.id
       },
       include: {
+        notes: true,
         author: {
           select: {
             id: true,
             name: true,
             email: true
           }
-        },
-        folder: true
+        }
       }
     });
-    res.json(notes);
+    res.json(folders);
   } catch (error) {
-    console.error('Error fetching notes:', error);
-    res.status(500).json({ error: 'Failed to fetch notes' });
+    console.error('Error fetching folders:', error);
+    res.status(500).json({ error: 'Failed to fetch folders' });
   }
 });
 
