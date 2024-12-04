@@ -89,29 +89,23 @@ async function testDbConnection(retries = 5, delay = 5000) {
       // Test the connection with a simple query
       await prisma.$executeRaw`SELECT 1`;
       
-      // Set up connection error handler
-      prisma.$on('beforeExit', async () => {
-        console.log('Prisma Client is shutting down');
-        try {
-          await prisma.$disconnect();
-          console.log('Disconnected from database');
-        } catch (disconnectError) {
-          console.error('Failed to disconnect:', disconnectError);
-        }
-      });
-
-      // Handle process termination
-      process.on('SIGINT', async () => {
-        console.log('Received SIGINT signal');
+      // Set up proper shutdown handling
+      const cleanup = async () => {
+        console.log('Server is shutting down...');
         try {
           await prisma.$disconnect();
           console.log('Disconnected from database');
           process.exit(0);
         } catch (error) {
-          console.error('Error during shutdown:', error);
+          console.error('Error during cleanup:', error);
           process.exit(1);
         }
-      });
+      };
+
+      // Handle process termination signals
+      process.on('SIGINT', cleanup);
+      process.on('SIGTERM', cleanup);
+      process.on('beforeExit', cleanup);
 
       console.log('Successfully connected to database');
       return true;

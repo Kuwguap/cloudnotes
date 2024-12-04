@@ -71,16 +71,21 @@ async function testDbConnection(retries = 5, delay = 5000) {
                 throw new Error('Database URL is not configured');
             }
             await prisma.$executeRaw `SELECT 1`;
-            prisma.$on('error', async (e) => {
-                console.error('Prisma Client error:', e);
+            const cleanup = async () => {
+                console.log('Server is shutting down...');
                 try {
-                    await prisma.$connect();
-                    console.log('Reconnected to database after error');
+                    await prisma.$disconnect();
+                    console.log('Disconnected from database');
+                    process.exit(0);
                 }
-                catch (reconnectError) {
-                    console.error('Failed to reconnect:', reconnectError);
+                catch (error) {
+                    console.error('Error during cleanup:', error);
+                    process.exit(1);
                 }
-            });
+            };
+            process.on('SIGINT', cleanup);
+            process.on('SIGTERM', cleanup);
+            process.on('beforeExit', cleanup);
             console.log('Successfully connected to database');
             return true;
         }
