@@ -37,25 +37,25 @@ export interface Folder {
 export interface Note {
   id: string;
   title: string;
-  description?: string;
   content: string;
-  color?: string;
-  category?: string;
-  tags: string[];
-  starred: boolean;
-  isArchived: boolean;
-  isPinned: boolean;
-  isLocked: boolean;
-  lockHash?: string;
   createdAt: Date;
   updatedAt: Date;
-  lastAccessed: Date;
-  authorId: string;
+  userId: string;
+  authorId?: string;
   folderId?: string;
-  folder?: Folder;
-  author?: User;
-  sharedWith?: NoteShare[];
-  version: number;
+  isPublic?: boolean;
+  isLocked?: boolean;
+  starred?: boolean;
+  tags?: string[];
+  description?: string;
+  category?: string;
+  color?: string;
+  version?: number;
+  sharedWith?: Array<{
+    email: string;
+    canEdit: boolean;
+  }>;
+  passcode?: string | null;
 }
 
 export interface NoteShare {
@@ -66,4 +66,15 @@ export interface NoteShare {
   createdAt: Date;
   expiresAt?: Date;
   user?: User;
-} 
+}
+
+export interface ShareModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSubmit: (data: { email: string; canEdit: boolean }) => Promise<void>;
+  title: string;
+  noteTitle: string;
+  noteId: string | null;
+}
+
+export type Level = 1 | 2 | 3 | 4 | 5 | 6; 

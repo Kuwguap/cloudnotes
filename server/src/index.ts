@@ -90,13 +90,26 @@ async function testDbConnection(retries = 5, delay = 5000) {
       await prisma.$executeRaw`SELECT 1`;
       
       // Set up connection error handler
-      prisma.$on('error', async (e) => {
-        console.error('Prisma Client error:', e);
+      prisma.$on('beforeExit', async () => {
+        console.log('Prisma Client is shutting down');
         try {
-          await prisma.$connect();
-          console.log('Reconnected to database after error');
-        } catch (reconnectError) {
-          console.error('Failed to reconnect:', reconnectError);
+          await prisma.$disconnect();
+          console.log('Disconnected from database');
+        } catch (disconnectError) {
+          console.error('Failed to disconnect:', disconnectError);
+        }
+      });
+
+      // Handle process termination
+      process.on('SIGINT', async () => {
+        console.log('Received SIGINT signal');
+        try {
+          await prisma.$disconnect();
+          console.log('Disconnected from database');
+          process.exit(0);
+        } catch (error) {
+          console.error('Error during shutdown:', error);
+          process.exit(1);
         }
       });
 

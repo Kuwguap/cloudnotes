@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShareIcon, UserIcon, TrashIcon } from '@heroicons/react/24/outline';
-import { User, NoteShare } from '../types';
+import { User } from '../types';
 import UserSearch from './UserSearch';
 
 interface ShareModalProps {
@@ -9,9 +9,16 @@ interface ShareModalProps {
   onClose: () => void;
   onSubmit: (data: { email: string; canEdit: boolean }) => Promise<void>;
   title: string;
-  sharedWith?: NoteShare[];
+  noteTitle: string;
+  noteId: string | null;
   onRemoveShare?: (userId: string) => Promise<void>;
   onUpdatePermissions?: (userId: string, canEdit: boolean) => Promise<void>;
+  sharedWith?: Array<{
+    id: string;
+    userId: string;
+    user?: User;
+    canEdit: boolean;
+  }>;
 }
 
 const ShareModal: React.FC<ShareModalProps> = ({
@@ -19,6 +26,8 @@ const ShareModal: React.FC<ShareModalProps> = ({
   onClose,
   onSubmit,
   title,
+  noteTitle,
+  noteId,
   sharedWith = [],
   onRemoveShare,
   onUpdatePermissions,
@@ -105,6 +114,7 @@ const ShareModal: React.FC<ShareModalProps> = ({
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
+            data-note-id={noteId}
             className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4 shadow-xl"
           >
             <div className="flex items-center justify-between mb-4">
@@ -113,6 +123,9 @@ const ShareModal: React.FC<ShareModalProps> = ({
                 <h3 className="text-lg font-medium text-gray-900 dark:text-white">
                   {title}
                 </h3>
+              </div>
+              <div className="text-sm text-gray-500 dark:text-gray-400">
+                {noteTitle}
               </div>
               {loading && (
                 <div className="animate-spin h-5 w-5 border-2 border-purple-500 rounded-full border-t-transparent"></div>

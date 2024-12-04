@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { io, Socket } from 'socket.io-client';
+import { Note } from '../types';
 
 const API_URL = 'http://localhost:5000/api';
 
@@ -243,18 +244,8 @@ export const createNote = async (data: {
   }
 };
 
-export const updateNote = async (id: string, data: Partial<Note>) => {
-  try {
-    const response = await api.put(`/notes/${id}`, data);
-    const userId = getCurrentUserId();
-    if (userId) {
-      response.data = sanitizeLockedNote(response.data, userId);
-    }
-    return response;
-  } catch (error) {
-    console.error('Error updating note:', error);
-    throw error;
-  }
+export const updateNote = async (noteId: string, data: Partial<Note>) => {
+  return api.put(`/notes/${noteId}`, data);
 };
 
 export const shareNote = async (id: string, data: { email: string; canEdit: boolean }) => {
@@ -338,7 +329,9 @@ export const updateFolder = (
   }
 ) => api.put(`/folders/${id}`, data);
 
-export const deleteFolder = (id: string) => api.delete(`/folders/${id}`);
+export const deleteFolder = async (folderId: string) => {
+  return api.delete(`/folders/${folderId}`);
+};
 
 // Add lock/unlock functions for notes
 export const lockNote = async (id: string, passcode: string) => {

@@ -18,6 +18,14 @@ const render = () => {
 
 render();
 
+declare global {
+  interface NodeModule {
+    hot?: {
+      accept(path: string, callback: () => void): void;
+    };
+  }
+}
+
 if (module.hot) {
   module.hot.accept('./App', () => {
     render();

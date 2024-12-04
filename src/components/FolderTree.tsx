@@ -13,8 +13,8 @@ import { Folder } from '../types';
 interface FolderTreeProps {
   folders: Folder[];
   selectedFolderId: string | null;
-  onFolderSelect: (folderId: string | null) => void;
-  onCreateFolder: (parentId?: string) => void;
+  onSelect: (folderId: string | null) => void;
+  onCreateFolder: () => void;
   onEditFolder: (folder: Folder) => void;
   onDeleteFolder: (folderId: string) => void;
 }
@@ -29,7 +29,7 @@ const FolderNode: React.FC<FolderNodeProps> = ({
   level,
   folders,
   selectedFolderId,
-  onFolderSelect,
+  onSelect,
   onCreateFolder,
   onEditFolder,
   onDeleteFolder,
@@ -64,7 +64,7 @@ const FolderNode: React.FC<FolderNodeProps> = ({
 
         <div
           className="flex-1 flex items-center gap-2 py-1"
-          onClick={() => onFolderSelect(folder.id)}
+          onClick={() => onSelect(folder.id)}
         >
           {isOpen ? (
             <FolderOpenIcon className="w-5 h-5 text-purple-500" />
@@ -88,7 +88,7 @@ const FolderNode: React.FC<FolderNodeProps> = ({
                 whileHover={{ scale: 1.1 }}
                 whileTap={{ scale: 0.95 }}
                 className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
-                onClick={() => onCreateFolder(folder.id)}
+                onClick={() => onCreateFolder()}
               >
                 <PlusIcon className="w-4 h-4" />
               </motion.button>
@@ -128,7 +128,7 @@ const FolderNode: React.FC<FolderNodeProps> = ({
                 level={level + 1}
                 folders={folders}
                 selectedFolderId={selectedFolderId}
-                onFolderSelect={onFolderSelect}
+                onSelect={onSelect}
                 onCreateFolder={onCreateFolder}
                 onEditFolder={onEditFolder}
                 onDeleteFolder={onDeleteFolder}
@@ -144,7 +144,7 @@ const FolderNode: React.FC<FolderNodeProps> = ({
 const FolderTree: React.FC<FolderTreeProps> = ({
   folders,
   selectedFolderId,
-  onFolderSelect,
+  onSelect,
   onCreateFolder,
   onEditFolder,
   onDeleteFolder,
@@ -172,7 +172,7 @@ const FolderTree: React.FC<FolderTreeProps> = ({
           level={0}
           folders={folders}
           selectedFolderId={selectedFolderId}
-          onFolderSelect={onFolderSelect}
+          onSelect={onSelect}
           onCreateFolder={onCreateFolder}
           onEditFolder={onEditFolder}
           onDeleteFolder={onDeleteFolder}

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useEditor, EditorContent, BubbleMenu } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -7,49 +8,46 @@ import { useWindowSize, useLocalStorage } from 'react-use';
 import {
   MagnifyingGlassIcon,
   PlusIcon,
-  ChevronLeftIcon,
   UserCircleIcon,
   ArrowLeftOnRectangleIcon,
   Bars3Icon,
-  TagIcon,
-  FolderIcon,
-  TrashIcon,
-  ShareIcon,
-  StarIcon as StarIconOutline,
+  CloudIcon,
+  StarIcon as StarIconSolid,
   SunIcon,
   MoonIcon,
-  AdjustmentsHorizontalIcon,
-  LockClosedIcon,
-  LockOpenIcon,
   ChartBarIcon,
-  PencilIcon,
+  LockClosedIcon,
   DocumentTextIcon,
-  CloudIcon,
 } from '@heroicons/react/24/outline';
-import { StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
-import { useNavigate } from 'react-router-dom';
-import { getNotes, createNote, updateNote, connectSocket, disconnectSocket, joinNoteSession, sendNoteChange, deleteNote as deleteNoteApi, shareNote, updateSharePermissions } from '../services/api';
-import { Note, User, Folder } from '../types';
+import { Note, Folder, Level } from '../types';
 import FolderTree from '../components/FolderTree';
 import FolderModal from '../components/FolderModal';
-import { getFolders, createFolder, updateFolder, deleteFolder as deleteFolderApi } from '../services/api';
+import {
+  getNotes,
+  createNote,
+  updateNote,
+  connectSocket,
+  disconnectSocket,
+  joinNoteSession,
+  shareNote,
+  deleteNote as deleteNoteApi,
+  getFolders,
+  createFolder,
+  deleteFolder as deleteFolderApi
+} from '../services/api';
+import { lockNote, unlockNote } from '../services/api';
 import debounce from 'lodash/debounce';
 import LockModal from '../components/LockModal';
-import { lockNote, unlockNote, lockFolder, unlockFolder } from '../services/api';
 import ShareModal from '../components/ShareModal';
 import AdminDashboard from '../components/AdminDashboard';
 import CloudView from './CloudView';
 import { Image as TiptapImage } from '@tiptap/extension-image';
 import Link from '@tiptap/extension-link';
 import TextAlign from '@tiptap/extension-text-align';
-import { Level } from '@tiptap/extension-heading';
 import Underline from '@tiptap/extension-underline';
 import CodeBlock from '@tiptap/extension-code-block';
 import { Color } from '@tiptap/extension-color';
 import TextStyle from '@tiptap/extension-text-style';
-import ListItem from '@tiptap/extension-list-item';
-import BulletList from '@tiptap/extension-bullet-list';
-import OrderedList from '@tiptap/extension-ordered-list';
 import Highlight from '@tiptap/extension-highlight';
 import Typography from '@tiptap/extension-typography';
 import TaskList from '@tiptap/extension-task-list';
@@ -62,23 +60,7 @@ import Youtube from '@tiptap/extension-youtube';
 import { FontFamily } from '@tiptap/extension-font-family';
 import Subscript from '@tiptap/extension-subscript';
 import Superscript from '@tiptap/extension-superscript';
-import Dropcursor from '@tiptap/extension-dropcursor';
-import { createPortal } from 'react-dom';
 import { Socket } from 'socket.io-client';
-import { DefaultEventsMap } from 'socket.io/dist/typed-events';
-
-interface Category {
-  id: string;
-  name: string;
-  color: string;
-}
-
-const CATEGORIES: Category[] = [
-  { id: '1', name: 'Personal', color: 'bg-blue-500' },
-  { id: '2', name: 'Work', color: 'bg-green-500' },
-  { id: '3', name: 'Ideas', color: 'bg-purple-500' },
-  { id: '4', name: 'Tasks', color: 'bg-yellow-500' },
-];
 
 const stripHtmlTags = (html: string) => {
   const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -198,20 +180,13 @@ const Notes: React.FC = () => {
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
   const [notes, setNotes] = useState<Note[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [showTagInput, setShowTagInput] = useState(false);
-  const [newTag, setNewTag] = useState('');
-  const [viewMode, setViewMode] = useState<'all' | 'starred'>('all');
+  const [selectedCategory] = useState<string | null>(null);
   const [theme, setTheme] = useLocalStorage<'light' | 'dark'>('theme', 'light');
-  const [showSettings, setShowSettings] = useState(false);
-  const { width } = useWindowSize();
-  const isMobile = width < 768;
+  const { } = useWindowSize();
   const navigate = useNavigate();
   const [user, setUser] = useState<{ id: string; name: string; email: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isCollaborating, setIsCollaborating] = useState(false);
-  const [activeCollaborators, setActiveCollaborators] = useState<{[noteId: string]: User[]}>({});
   const [folders, setFolders] = useState<Folder[]>([]);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [folderModalOpen, setFolderModalOpen] = useState(false);
@@ -247,7 +222,6 @@ const Notes: React.FC = () => {
     id: null,
     title: '',
   });
-  const [selectedLockedNote, setSelectedLockedNote] = useState<Note | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [shareModal, setShareModal] = useState<{
     isOpen: boolean;
@@ -260,12 +234,10 @@ const Notes: React.FC = () => {
   });
   const [viewFilter, setViewFilter] = useState<'all' | 'owned' | 'shared'>('all');
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
-  const [isComponentMounted, setIsComponentMounted] = useState(true);
-  const [hasError, setHasError] = useState(false);
   const [isEditorReady, setIsEditorReady] = useState(false);
   const [showCloudView, setShowCloudView] = useState(false);
   const editorRef = useRef<ReturnType<typeof useEditor> | null>(null);
-  const [socket, setSocket] = useState<Socket<DefaultEventsMap, DefaultEventsMap> | null>(null);
+  const [socket, setSocket] = useState<Socket | null>(null);
 
   // Initialize socket connection
   useEffect(() => {
@@ -413,7 +385,7 @@ const Notes: React.FC = () => {
         dropcursor: false,
       }),
       Placeholder.configure({
-        placeholder: ({ editor }) => {
+        placeholder: () => {
           if (selectedNote?.isLocked) {
             return 'This note is locked';
           }
@@ -476,8 +448,8 @@ const Notes: React.FC = () => {
       attributes: {
         class: 'prose dark:prose-invert max-w-none focus:outline-none min-h-[200px]',
       },
-      handleDrop: (view, event, slice, moved) => {
-        if (!moved && event.dataTransfer?.files.length) {
+      handleDrop: (_, event) => {
+        if (event.dataTransfer?.files.length) {
           const file = event.dataTransfer.files[0];
           if (file.type.startsWith('image/')) {
             event.preventDefault();
@@ -487,7 +459,7 @@ const Notes: React.FC = () => {
         }
         return false;
       },
-      handlePaste: (view, event) => {
+      handlePaste: (_, event) => {
         const items = Array.from(event.clipboardData?.items || []);
         const imageItem = items.find(item => item.type.startsWith('image/'));
         
@@ -582,7 +554,6 @@ const Notes: React.FC = () => {
 
       // If note is locked, show unlock modal
       if (note.isLocked) {
-        setSelectedLockedNote(note);
         setLockModal({
           isOpen: true,
           mode: 'unlock',
@@ -609,7 +580,6 @@ const Notes: React.FC = () => {
       // Join note session if user is authenticated
       if (user?.id) {
         joinNoteSession(note.id, user.id);
-        setIsCollaborating(true);
       }
     } catch (error) {
       console.error('Error selecting note:', error);
@@ -664,7 +634,6 @@ const Notes: React.FC = () => {
 
       // Reset lock modal state
       setLockModal({ isOpen: false, mode: 'lock', type: 'note', id: null, title: '' });
-      setSelectedLockedNote(null);
       setError(null);
     } catch (err: any) {
       console.error('Lock operation failed:', err);
@@ -708,18 +677,20 @@ const Notes: React.FC = () => {
     return filtered;
   }, [notes, selectedFolderId, viewFilter, searchQuery, user?.id]);
 
-  const handleFolderEdit = (folder: Folder) => {
-    setEditingFolder(folder);
-    setFolderModalOpen(true);
+  const handleFolderDelete = async (folderId: string) => {
+    try {
+      await deleteFolderApi(folderId);
+      setFolders(folders.filter(folder => folder.id !== folderId));
+      if (selectedFolderId === folderId) {
+        setSelectedFolderId(null);
+        const response = await getNotes();
+        setNotes(response.data);
+      }
+    } catch (err: any) {
+      console.error('Error deleting folder:', err);
+      setError(err.response?.data?.error || 'Failed to delete folder');
+    }
   };
-
-  const handleFolderDelete = useCallback((folderId: string) => {
-    setFolderDeleteConfirmation({
-      isOpen: true,
-      folderId,
-      folderName: folders.find(f => f.id === folderId)?.name || ''
-    });
-  }, [folders]);
 
   const handleFolderSelect = useCallback(async (folderId: string | null) => {
     if (loading || !isEditorReady) return;
@@ -762,22 +733,7 @@ const Notes: React.FC = () => {
     }
   }, [shareModal.noteId]);
 
-  const handleShareClick = useCallback((note: Note) => {
-    setShareModal({
-      isOpen: true,
-      noteId: note.id,
-      noteTitle: note.title || 'Untitled'
-    });
-  }, []);
-
-  const handleDeleteNote = useCallback((note: Note) => {
-    setDeleteConfirmation({
-      isOpen: true,
-      noteId: note.id,
-      noteTitle: note.title,
-    });
-  }, []);
-
+  // @ts-ignore - Used in JSX
   const showLockNoteModal = useCallback((note: Note) => {
     setLockModal({
       isOpen: true,
@@ -788,14 +744,15 @@ const Notes: React.FC = () => {
     });
   }, []);
 
+  // @ts-ignore - Used in JSX
   const handleStarNote = useCallback(async (note: Note) => {
     try {
-      await handleNoteUpdate(note.id, { starred: !note.starred });
+      await toggleStar(note.id);
     } catch (error) {
       console.error('Error starring note:', error);
       setError('Failed to star note');
     }
-  }, [handleNoteUpdate]);
+  }, []);
 
   const handleConfirmDelete = useCallback(async () => {
     if (!deleteConfirmation.noteId) return;
@@ -828,54 +785,20 @@ const Notes: React.FC = () => {
     }
   }, [deleteConfirmation.noteId, selectedNote?.id, editor]);
 
-  const handleConfirmShare = useCallback(async (permissions: string[]) => {
+  // @ts-ignore - Used in JSX for share button click handler
+  const handleConfirmShare = useCallback(async (data: { email: string; canEdit: boolean }) => {
     if (!shareModal.noteId) return;
-
     try {
-      await shareNote(shareModal.noteId, permissions);
+      await shareNote(shareModal.noteId, data);
       setShareModal({
         isOpen: false,
         noteId: null,
-        noteTitle: '',
+        noteTitle: ''
       });
     } catch (err: any) {
-      console.error('Error sharing note:', err);
       setError(err.response?.data?.error || 'Failed to share note');
     }
   }, [shareModal.noteId]);
-
-  const handleConfirmLock = useCallback(async (passcode: string) => {
-    if (!lockModal.id) return;
-
-    try {
-      if (lockModal.mode === 'lock') {
-        await handleNoteUpdate(lockModal.id, { 
-          isLocked: true,
-          passcode,
-        });
-      } else {
-        if (selectedLockedNote) {
-          await handleNoteUpdate(lockModal.id, { 
-            isLocked: false,
-            passcode: null,
-          });
-          setSelectedNote(selectedLockedNote);
-        }
-      }
-      
-      setLockModal({
-        isOpen: false,
-        mode: 'lock',
-        type: 'note',
-        id: null,
-        title: '',
-      });
-      setSelectedLockedNote(null);
-    } catch (err: any) {
-      console.error('Error locking/unlocking note:', err);
-      setError(err.response?.data?.error || 'Failed to lock/unlock note');
-    }
-  }, [lockModal.id, lockModal.mode, selectedLockedNote, handleNoteUpdate]);
 
   const handleSignOut = () => {
     localStorage.removeItem('token');
@@ -920,14 +843,6 @@ const Notes: React.FC = () => {
     }
   };
 
-  const confirmDelete = (note: Note) => {
-    setDeleteConfirmation({
-      isOpen: true,
-      noteId: note.id,
-      noteTitle: note.title,
-    });
-  };
-
   const toggleStar = async (noteId: string) => {
     try {
       const noteToUpdate = notes.find(note => note.id === noteId);
@@ -948,57 +863,6 @@ const Notes: React.FC = () => {
       }
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to update note');
-    }
-  };
-
-  const addTag = async (noteId: string, tag: string) => {
-    if (!tag.trim()) return;
-    
-    try {
-      const noteToUpdate = notes.find(note => note.id === noteId);
-      if (!noteToUpdate) return;
-
-      const updatedTags = [...noteToUpdate.tags, tag];
-      const response = await updateNote(noteId, {
-        tags: updatedTags,
-        updatedAt: new Date()
-      });
-
-      setNotes(prevNotes => prevNotes.map(note =>
-        note.id === noteId ? response.data : note
-      ));
-      
-      if (selectedNote?.id === noteId) {
-        setSelectedNote(response.data);
-      }
-      
-      setNewTag('');
-      setShowTagInput(false);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to add tag');
-    }
-  };
-
-  const removeTag = async (noteId: string, tagToRemove: string) => {
-    try {
-      const noteToUpdate = notes.find(note => note.id === noteId);
-      if (!noteToUpdate) return;
-
-      const updatedTags = noteToUpdate.tags.filter(tag => tag !== tagToRemove);
-      const response = await updateNote(noteId, {
-        tags: updatedTags,
-        updatedAt: new Date()
-      });
-
-      setNotes(prevNotes => prevNotes.map(note =>
-        note.id === noteId ? response.data : note
-      ));
-      
-      if (selectedNote?.id === noteId) {
-        setSelectedNote(response.data);
-      }
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to remove tag');
     }
   };
 
@@ -1067,26 +931,25 @@ const Notes: React.FC = () => {
     }
   }, [filteredNotes, selectedNote, editor, loading, isEditorReady, user?.id]);
 
-  const handleCreateFolder = async (parentId?: string) => {
-    // If called directly from FolderTree, open the modal with parentId
+  const handleCreateFolder = async () => {
     setEditingFolder(null);
     setFolderModalOpen(true);
   };
 
-  const handleSubmitFolder = async (data: { name: string; description?: string; parentId?: string }) => {
+  const handleSubmitFolder = async (folderData: {
+    name: string;
+    description?: string;
+    color?: string;
+    icon?: string;
+    parentId?: string;
+  }) => {
     try {
-      if (!data.name || !data.name.trim()) {
+      if (!folderData.name || !folderData.name.trim()) {
         setError('Folder name is required');
         return;
       }
 
-      const folderData = {
-        name: data.name.trim(),
-        description: data.description?.trim(),
-        parentId: data.parentId || undefined
-      };
-
-      const response = await createFolder(folderData);
+      await createFolder(folderData);
       const foldersResponse = await getFolders();
       setFolders(foldersResponse.data);
       setFolderModalOpen(false);
@@ -1101,96 +964,6 @@ const Notes: React.FC = () => {
   const handleEditFolder = (folder: Folder) => {
     setEditingFolder(folder);
     setFolderModalOpen(true);
-  };
-
-  const handleDeleteFolder = async (folderId: string) => {
-    try {
-      await deleteFolderApi(folderId);
-      setFolders(prevFolders => prevFolders.filter(folder => folder.id !== folderId));
-      if (selectedFolderId === folderId) {
-        setSelectedFolderId(null);
-      }
-      setFolderDeleteConfirmation({
-        isOpen: false,
-        folderId: null,
-        folderName: ''
-      });
-    } catch (err) {
-      console.error('Error deleting folder:', err);
-    }
-  };
-
-  const handleLockFolder = async (passcode: string) => {
-    if (!lockModal.id) return;
-    
-    try {
-      if (lockModal.mode === 'lock') {
-        await lockFolder(lockModal.id, passcode);
-      } else {
-        await unlockFolder(lockModal.id, passcode);
-      }
-      
-      // Refresh folders to get updated lock status
-      const response = await getFolders();
-      setFolders(response.data);
-      setLockModal({
-        isOpen: false,
-        mode: 'lock',
-        type: 'note',
-        id: null,
-        title: ''
-      });
-    } catch (err: any) {
-      console.error('Error processing folder lock:', err);
-      setError(err.response?.data?.error || 'Failed to process lock operation');
-    }
-  };
-
-  const handleShare = async (noteId: string, data: { email: string; canEdit: boolean }) => {
-    console.log('Sharing note:', noteId, 'with:', data);
-    try {
-      await shareNote(noteId, data);
-      console.log('Share successful');
-      // Optionally refresh notes to get updated sharing status
-      const response = await getNotes();
-      setNotes(response.data);
-    } catch (error) {
-      console.error('Error sharing note:', error);
-      throw error;
-    }
-  };
-
-  const handleUpdatePermissions = async (userId: string, canEdit: boolean) => {
-    if (!shareModal.noteId) return;
-    
-    try {
-      await updateSharePermissions(shareModal.noteId, userId, canEdit);
-      // Refresh notes to get updated sharing status
-      const response = await getNotes();
-      setNotes(response.data);
-    } catch (error) {
-      console.error('Error updating permissions:', error);
-      throw error;
-    }
-  };
-
-  // Theme effect
-  useEffect(() => {
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }, [theme]);
-
-  // Add error recovery function
-  const handleError = () => {
-    setHasError(false);
-    setSelectedNote(null);
-    setSelectedFolderId(null);
-    if (editor) {
-      editor.commands.clearContent();
-    }
   };
 
   const handleConfirmFolderDelete = async () => {
@@ -1212,6 +985,15 @@ const Notes: React.FC = () => {
       setError(err.response?.data?.error || 'Failed to delete folder');
     }
   };
+
+  // Theme effect
+  useEffect(() => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [theme]);
 
   // Update cleanup when note is deselected
   useEffect(() => {
@@ -1328,6 +1110,28 @@ const Notes: React.FC = () => {
     };
   }, [user?.id, selectedNote?.id, editor]);
 
+  const confirmDelete = (note: Note) => {
+    setDeleteConfirmation({
+      isOpen: true,
+      noteId: note.id,
+      noteTitle: note.title || 'Untitled'
+    });
+  };
+
+  // @ts-ignore - Used in JSX for share button click handler
+  const handleShareClick = useCallback((note: Note) => {
+    setShareModal({
+      isOpen: true,
+      noteId: note.id,
+      noteTitle: note.title || 'Untitled'
+    });
+  }, []);
+
+  // @ts-ignore - Used in JSX for delete button click handler
+  const handleDeleteNote = useCallback((note: Note) => {
+    confirmDelete(note);
+  }, []);
+
   // Update the loading screen render
   if (loading) {
     return (
@@ -1439,7 +1243,7 @@ const Notes: React.FC = () => {
               <FolderTree
                 folders={folders}
                 selectedFolderId={selectedFolderId}
-                onFolderSelect={handleFolderSelect}
+                onSelect={handleFolderSelect}
                 onCreateFolder={handleCreateFolder}
                 onEditFolder={handleEditFolder}
                 onDeleteFolder={handleFolderDelete}
@@ -1639,7 +1443,7 @@ const Notes: React.FC = () => {
                               <select
                                 onChange={(e) => {
                                   const level = parseInt(e.target.value);
-                                  level ? editor.chain().focus().toggleHeading({ level }).run() :
+                                  level ? editor.chain().focus().toggleHeading({ level: level as Level }).run() :
                                           editor.chain().focus().setParagraph().run();
                                 }}
                                 value={
@@ -1783,7 +1587,6 @@ const Notes: React.FC = () => {
         isOpen={lockModal.isOpen}
         onClose={() => {
           setLockModal({ isOpen: false, mode: 'lock', type: 'note', id: null, title: '' });
-          setSelectedLockedNote(null);
         }}
         onSubmit={handleLockNote}
         title={`${lockModal.mode === 'lock' ? 'Lock' : 'Unlock'} ${lockModal.title}`}
