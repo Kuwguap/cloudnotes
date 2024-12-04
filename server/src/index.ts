@@ -91,6 +91,9 @@ io.on('connection', (socket) => {
   });
 });
 
+// Define port
+const PORT = process.env.PORT || 5000;
+
 // Health check endpoint
 app.get('/health', async (_req, res) => {
   try {
