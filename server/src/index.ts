@@ -9,6 +9,9 @@ import { errorHandler } from './middleware/errorHandler';
 
 dotenv.config();
 
+// Initialize Prisma client at the top level
+let prisma: PrismaClient;
+
 const corsOrigins = process.env.CORS_ORIGIN 
   ? process.env.CORS_ORIGIN.split(',')
   : ['http://localhost:3000'];
@@ -18,54 +21,57 @@ const httpServer = createServer(app);
 
 // Get database URL based on environment
 const getDatabaseUrl = () => {
-  if (process.env.RAILWAY_ENVIRONMENT === 'production') {
-    const dbUrl = process.env.DATABASE_URL;
-    if (!dbUrl) {
-      throw new Error('DATABASE_URL is not configured');
-    }
-
-    // Handle different Railway database URL formats
-    if (dbUrl.includes('postgresql.railway.internal')) {
-      const publicUrl = dbUrl.replace(
-        'postgresql.railway.internal',
-        'railway.app'
-      );
-      console.log('Using transformed Railway DATABASE_URL');
-      return publicUrl;
-    }
-    
-    console.log('Using original DATABASE_URL');
-    return dbUrl;
-  }
+  const dbUrl = process.env.DATABASE_URL || 'postgresql://postgres:zxwAfCZRIoHudLtdKzijtBJueMQtLfYq@autorack.proxy.rlwy.net:54425/railway';
   
-  console.log('Using default DATABASE_URL');
-  return process.env.DATABASE_URL;
+  if (!dbUrl) {
+    throw new Error(
+      'DATABASE_URL is not configured. Please set it in your .env file.\n' +
+      'Example: DATABASE_URL="postgresql://user:password@localhost:5432/cloudnotes?schema=public"'
+    );
+  }
+
+  console.log('Using Railway DATABASE_URL');
+  return dbUrl;
 };
 
 // Initialize Prisma with connection retry logic
-const prisma = new PrismaClient({
-  log: ['query', 'info', 'warn', 'error'],
-  datasources: {
-    db: {
-      url: getDatabaseUrl()
-    }
-  }
-});
+const initializePrisma = async () => {
+  const maxRetries = 5;
+  const retryDelay = 5000; // 5 seconds
 
-// Prisma error handling middleware
-prisma.$use(async (params, next) => {
-  try {
-    return await next(params);
-  } catch (error) {
-    if (error instanceof Prisma.PrismaClientInitializationError ||
-        error instanceof Prisma.PrismaClientKnownRequestError) {
-      console.error('Database error:', error.message);
-      // Attempt to reconnect
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`Attempting database connection (attempt ${attempt}/${maxRetries})...`);
+      
+      prisma = new PrismaClient({
+        log: ['query', 'info', 'warn', 'error'],
+        datasources: {
+          db: {
+            url: getDatabaseUrl()
+          }
+        }
+      });
+
+      // Test the connection
       await prisma.$connect();
+      await prisma.$executeRaw`SELECT 1`;
+      
+      console.log('Successfully connected to database');
+      return prisma;
+    } catch (error) {
+      console.error(`Database connection attempt ${attempt} failed:`, error);
+      
+      if (attempt === maxRetries) {
+        throw new Error('Failed to connect to database after multiple attempts');
+      }
+      
+      console.log(`Retrying in ${retryDelay/1000} seconds...`);
+      await new Promise(resolve => setTimeout(resolve, retryDelay));
     }
-    throw error;
   }
-});
+  
+  throw new Error('Failed to initialize database connection');
+};
 
 // Create Socket.IO server
 const io = new Server(httpServer, {
@@ -76,50 +82,6 @@ const io = new Server(httpServer, {
   }
 });
 
-// Test database connection with retries
-async function testDbConnection(retries = 5, delay = 5000) {
-  for (let i = 0; i < retries; i++) {
-    try {
-      console.log(`Attempting database connection (attempt ${i + 1}/${retries})...`);
-      const dbUrl = getDatabaseUrl();
-      if (!dbUrl) {
-        throw new Error('Database URL is not configured');
-      }
-      
-      // Test the connection with a simple query
-      await prisma.$executeRaw`SELECT 1`;
-      
-      // Set up proper shutdown handling
-      const cleanup = async () => {
-        console.log('Server is shutting down...');
-        try {
-          await prisma.$disconnect();
-          console.log('Disconnected from database');
-          process.exit(0);
-        } catch (error) {
-          console.error('Error during cleanup:', error);
-          process.exit(1);
-        }
-      };
-
-      // Handle process termination signals
-      process.on('SIGINT', cleanup);
-      process.on('SIGTERM', cleanup);
-      process.on('beforeExit', cleanup);
-
-      console.log('Successfully connected to database');
-      return true;
-    } catch (error) {
-      console.error(`Database connection attempt ${i + 1} failed:`, error);
-      if (i < retries - 1) {
-        console.log(`Retrying in ${delay/1000} seconds...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
-    }
-  }
-  return false;
-}
-
 // Socket.IO connection handling
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
@@ -129,71 +91,56 @@ io.on('connection', (socket) => {
   });
 });
 
-app.use(cors({
-  origin: corsOrigins,
-  credentials: true
-}));
-
-app.use(express.json());
-
-// Routes
-app.use('/api', routes);
-
-app.get('/', (_req, res) => {
-  res.json({
-    message: 'CloudNotes API is running',
-    environment: process.env.NODE_ENV || 'development',
-    timestamp: new Date().toISOString()
-  });
-});
-
-// Health check endpoint with DB check
+// Health check endpoint
 app.get('/health', async (_req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
     res.json({ 
       status: 'ok',
       database: 'connected',
-      timestamp: new Date().toISOString(),
-      databaseUrl: getDatabaseUrl()?.split('@')[1] // Only show host part for security
+      timestamp: new Date().toISOString()
     });
   } catch (error) {
     res.status(500).json({ 
       status: 'error',
       database: 'disconnected',
-      timestamp: new Date().toISOString(),
-      error: error instanceof Error ? error.message : 'Unknown error'
+      timestamp: new Date().toISOString()
     });
   }
 });
 
-// Error handling
-app.use(errorHandler);
-
-const PORT = process.env.PORT || 3001;
-
-// Initialize server
-async function startServer() {
+// Start the server
+const startServer = async () => {
   try {
-    const dbConnected = await testDbConnection();
-    if (!dbConnected) {
-      throw new Error('Failed to connect to database after multiple retries');
-    }
+    await initializePrisma();
     
+    // Set up routes and middleware after database is connected
+    app.use(cors({
+      origin: corsOrigins,
+      credentials: true
+    }));
+    app.use(express.json());
+    app.use('/api', routes);
+    app.use(errorHandler);
+
     httpServer.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-      console.log(`Health check available at http://localhost:${PORT}/health`);
-      console.log('Database connection successful');
+      console.log(`Server is running on port ${PORT}`);
     });
   } catch (error) {
     console.error('Failed to start server:', error);
     process.exit(1);
   }
-}
+};
 
 // Handle graceful shutdown
 process.on('SIGTERM', async () => {
   console.log('SIGTERM received. Closing HTTP server and database connection...');
+  await prisma.$disconnect();
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  console.log('SIGINT received. Closing HTTP server and database connection...');
   await prisma.$disconnect();
   process.exit(0);
 });
