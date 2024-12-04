@@ -15,12 +15,13 @@
     "@prisma/client": "^5.0.0",
     "bcrypt": "^5.1.0",
     "cors": "^2.8.5",
+    "curl": "^0.1.4",
     "dotenv": "^16.0.3",
     "express": "^4.18.2",
     "jsonwebtoken": "^9.0.0",
+    "prisma": "^5.0.0",
     "socket.io": "^4.6.1",
-    "typescript": "^5.0.4",
-    "prisma": "^5.0.0"
+    "typescript": "^5.0.4"
   },
   "devDependencies": {
     "@types/bcrypt": "^5.0.0",
