@@ -4,11 +4,11 @@ import { Note } from '../types';
 
 const isProd = import.meta.env.PROD;
 const baseURL = isProd 
-  ? 'https://cloudnotes-production.up.railway.app/api'
+  ? 'https://cloudnotes-production-5f0e.up.railway.app/api'
   : 'http://localhost:5000/api';
 
 const wsURL = isProd
-  ? 'wss://cloudnotes-production.up.railway.app'
+  ? 'wss://cloudnotes-production-5f0e.up.railway.app'
   : 'ws://localhost:5000';
 
 const api = axios.create({
