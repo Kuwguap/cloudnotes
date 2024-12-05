@@ -6,7 +6,7 @@ const router = Router();
 const prisma = new PrismaClient();
 
 // Get admin stats
-router.get('/stats', authenticateToken, isAdmin, async (req: Request, res: Response) => {
+router.get('/stats', authenticateToken, isAdmin, async (_req: Request, res: Response): Promise<void> => {
   try {
     const [
       totalUsers,

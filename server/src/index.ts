@@ -31,13 +31,14 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Add headers middleware
-app.use((req: Request, res: Response, next) => {
+app.use((req: Request, res: Response, next): void => {
   res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
   res.header('Access-Control-Allow-Credentials', 'true');
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
   next();
 });
@@ -52,12 +53,12 @@ async function startServer() {
     if (!prisma) throw new Error('Failed to initialize Prisma client');
     
     // Root route
-    app.get('/', (req: Request, res: Response) => {
+    app.get('/', (_req: Request, res: Response): void => {
       res.json({ message: 'Welcome to CloudNotes API' });
     });
 
     // Health check route
-    app.get('/health', (req: Request, res: Response) => {
+    app.get('/health', (_req: Request, res: Response): void => {
       res.json({ status: 'ok' });
     });
     
@@ -69,13 +70,13 @@ async function startServer() {
     app.use('/api/admin', adminRouter);
     
     // Error handling middleware
-    app.use((err: any, req: Request, res: Response, next: any) => {
+    app.use((err: any, _req: Request, res: Response, _next: any): void => {
       console.error(err.stack);
       res.status(500).json({ error: 'Something went wrong!' });
     });
     
     // Handle 404
-    app.use((req: Request, res: Response) => {
+    app.use((_req: Request, res: Response): void => {
       res.status(404).json({ error: 'Not Found' });
     });
     

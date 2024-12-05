@@ -7,27 +7,27 @@ const router = (0, express_1.Router)();
 const prisma = new client_1.PrismaClient();
 router.get('/', auth_1.authenticateToken, async (req, res) => {
     try {
-        const notes = await prisma.note.findMany({
+        const folders = await prisma.folder.findMany({
             where: {
                 authorId: req.user.id
             },
             include: {
+                notes: true,
                 author: {
                     select: {
                         id: true,
                         name: true,
                         email: true
                     }
-                },
-                folder: true
+                }
             }
         });
-        res.json(notes);
+        res.json(folders);
     }
     catch (error) {
-        console.error('Error fetching notes:', error);
-        res.status(500).json({ error: 'Failed to fetch notes' });
+        console.error('Error fetching folders:', error);
+        res.status(500).json({ error: 'Failed to fetch folders' });
     }
 });
 exports.default = router;
-//# sourceMappingURL=notes.js.map
+//# sourceMappingURL=folders.js.map

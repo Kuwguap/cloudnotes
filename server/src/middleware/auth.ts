@@ -17,13 +17,14 @@ export const authenticateToken = async (
   req: Request,
   res: Response,
   next: NextFunction
-) => {
+): Promise<void> => {
   try {
     const authHeader = req.headers.authorization;
     const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
 
     if (!token) {
-      return res.status(401).json({ error: 'Authentication required' });
+      res.status(401).json({ error: 'Authentication required' });
+      return;
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key') as { userId: string };
@@ -41,7 +42,8 @@ export const authenticateToken = async (
     });
 
     if (!user) {
-      return res.status(401).json({ error: 'User not found' });
+      res.status(401).json({ error: 'User not found' });
+      return;
     }
 
     // Add user to request object
@@ -49,7 +51,8 @@ export const authenticateToken = async (
     next();
   } catch (error) {
     console.error('Authentication error:', error);
-    return res.status(401).json({ error: 'Invalid token' });
+    res.status(401).json({ error: 'Invalid token' });
+    return;
   }
 };
 
@@ -57,14 +60,16 @@ export const isAdmin = async (
   req: Request,
   res: Response,
   next: NextFunction
-) => {
+): Promise<void> => {
   try {
     if (!req.user?.isAdmin) {
-      return res.status(403).json({ error: 'Admin access required' });
+      res.status(403).json({ error: 'Admin access required' });
+      return;
     }
     next();
   } catch (error) {
     console.error('Admin check error:', error);
-    return res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: 'Server error' });
+    return;
   }
 }; 
