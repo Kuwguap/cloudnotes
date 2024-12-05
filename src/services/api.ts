@@ -2,9 +2,14 @@ import axios from 'axios';
 import { io, Socket } from 'socket.io-client';
 import { Note } from '../types';
 
-const baseURL = import.meta.env.PROD 
+const isProd = import.meta.env.PROD;
+const baseURL = isProd 
   ? 'https://cloudnotes-production.up.railway.app/api'
   : 'http://localhost:5000/api';
+
+const wsURL = isProd
+  ? 'wss://cloudnotes-production.up.railway.app'
+  : 'ws://localhost:5000';
 
 const api = axios.create({
   baseURL,
@@ -65,75 +70,35 @@ const MAX_RECONNECT_ATTEMPTS = 5;
 const RECONNECT_DELAY = 2000;
 
 export const connectSocket = () => {
-  try {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      console.log('No token found, skipping socket connection');
-      return null;
+  if (socket?.connected) return socket;
+
+  socket = io(wsURL, {
+    transports: ['websocket'],
+    withCredentials: true,
+    reconnectionAttempts: MAX_RECONNECT_ATTEMPTS,
+    reconnectionDelay: RECONNECT_DELAY,
+    autoConnect: true
+  });
+
+  socket.on('connect', () => {
+    console.log('Socket connected:', socket?.id);
+    reconnectAttempts = 0;
+  });
+
+  socket.on('connect_error', (error) => {
+    console.error('Socket connection error:', error);
+    reconnectAttempts++;
+    if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      console.error('Max reconnection attempts reached');
+      socket?.disconnect();
     }
+  });
 
-    // If socket exists and is connected, return it
-    if (socket?.connected) {
-      return socket;
-    }
+  socket.on('disconnect', (reason) => {
+    console.log('Socket disconnected:', reason);
+  });
 
-    // If socket exists but is disconnected, clean it up
-    if (socket) {
-      socket.removeAllListeners();
-      socket.disconnect();
-      socket = null;
-    }
-
-    console.log('Connecting to socket...');
-    socket = io('http://localhost:5000', {
-      auth: { token },
-      transports: ['websocket'],
-      reconnection: true,
-      reconnectionAttempts: MAX_RECONNECT_ATTEMPTS,
-      reconnectionDelay: RECONNECT_DELAY,
-      timeout: 10000
-    });
-
-    socket.on('connect', () => {
-      console.log('Socket connected successfully');
-      reconnectAttempts = 0;
-    });
-
-    socket.on('connect_error', (error) => {
-      console.error('Socket connection error:', error);
-      reconnectAttempts++;
-      
-      if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-        console.log('Max reconnection attempts reached, stopping reconnection');
-        socket?.disconnect();
-        socket = null;
-      } else {
-        console.log(`Reconnecting... Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`);
-        setTimeout(() => {
-          if (socket) {
-            socket.connect();
-          }
-        }, RECONNECT_DELAY);
-      }
-    });
-
-    socket.on('disconnect', (reason) => {
-      console.log('Socket disconnected:', reason);
-      if (reason === 'io server disconnect' || reason === 'io client disconnect') {
-        // Server/client initiated disconnect, don't reconnect
-        socket = null;
-      }
-    });
-
-    socket.on('error', (error) => {
-      console.error('Socket error:', error);
-    });
-
-    return socket;
-  } catch (error) {
-    console.error('Error connecting to socket:', error);
-    return null;
-  }
+  return socket;
 };
 
 export const getSocket = () => socket;

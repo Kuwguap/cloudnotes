@@ -104,15 +104,23 @@ async function startServer() {
         credentials: true,
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
         allowedHeaders: ['Content-Type', 'Authorization']
-      }
+      },
+      transports: ['websocket'],
+      path: '/socket.io',
+      pingTimeout: 60000,
+      pingInterval: 25000
     });
 
     // Socket.IO connection handling
     io.on('connection', (socket) => {
       console.log('Client connected:', socket.id);
 
-      socket.on('disconnect', () => {
-        console.log('Client disconnected:', socket.id);
+      socket.on('error', (error) => {
+        console.error('Socket error:', error);
+      });
+
+      socket.on('disconnect', (reason) => {
+        console.log('Client disconnected:', socket.id, reason);
       });
     });
     
