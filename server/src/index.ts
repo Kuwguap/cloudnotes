@@ -13,20 +13,25 @@ import adminRouter from './routes/admin';
 const app: Express = express();
 const port: number = Number(process.env.PORT) || 5000;
 
-// CORS configuration
-const corsOptions = {
-  origin: ['http://localhost:4000', 'http://localhost:3000', 'http://localhost:5173'],
+const corsOrigins = process.env.CORS_ORIGIN 
+  ? process.env.CORS_ORIGIN.split(',').map(origin => origin.trim())
+  : ['http://localhost:3000'];
+
+// Set up CORS
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || corsOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  optionsSuccessStatus: 200
-};
-
-// Enable pre-flight requests for all routes
-app.options('*', cors(corsOptions));
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
 // Middleware
-app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -83,12 +88,12 @@ async function startServer() {
     // Start server
     server = app.listen(port, '0.0.0.0', () => {
       console.log(`Server is running on port ${port}`);
-      console.log('CORS enabled for origins:', corsOptions.origin);
+      console.log('CORS enabled for origins:', corsOrigins);
     });
 
     // Initialize Socket.IO
     const io = new SocketServer(server, {
-      cors: corsOptions
+      cors: corsOrigins
     });
 
     // Socket.IO connection handling

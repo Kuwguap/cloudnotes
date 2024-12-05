@@ -2,13 +2,14 @@ import axios from 'axios';
 import { io, Socket } from 'socket.io-client';
 import { Note } from '../types';
 
-const API_URL = 'http://localhost:5000/api';
+const baseURL = import.meta.env.PROD 
+  ? 'https://cloudnotes-production.up.railway.app/api'
+  : 'http://localhost:5000/api';
 
 const api = axios.create({
-  baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  baseURL,
+  withCredentials: true,
+  timeout: 10000,
 });
 
 // Add token to requests if it exists
