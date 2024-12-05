@@ -14,15 +14,22 @@ const folders_1 = __importDefault(require("./routes/folders"));
 const admin_1 = __importDefault(require("./routes/admin"));
 const app = (0, express_1.default)();
 const port = Number(process.env.PORT) || 5000;
-const corsOptions = {
-    origin: ['http://localhost:4000', 'http://localhost:3000', 'http://localhost:5173'],
+const corsOrigins = process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',').map(origin => origin.trim())
+    : ['http://localhost:3000'];
+app.use((0, cors_1.default)({
+    origin: (origin, callback) => {
+        if (!origin || corsOrigins.includes(origin)) {
+            callback(null, true);
+        }
+        else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    optionsSuccessStatus: 200
-};
-app.options('*', (0, cors_1.default)(corsOptions));
-app.use((0, cors_1.default)(corsOptions));
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express_1.default.json());
 app.use(express_1.default.urlencoded({ extended: true }));
 app.use((req, res, next) => {
@@ -63,10 +70,22 @@ async function startServer() {
         });
         server = app.listen(port, '0.0.0.0', () => {
             console.log(`Server is running on port ${port}`);
-            console.log('CORS enabled for origins:', corsOptions.origin);
+            console.log('CORS enabled for origins:', corsOrigins);
         });
         const io = new socket_io_1.Server(server, {
-            cors: corsOptions
+            cors: {
+                origin: (origin, callback) => {
+                    if (!origin || corsOrigins.includes(origin)) {
+                        callback(null, true);
+                    }
+                    else {
+                        callback(new Error('Not allowed by CORS'));
+                    }
+                },
+                credentials: true,
+                methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+                allowedHeaders: ['Content-Type', 'Authorization']
+            }
         });
         io.on('connection', (socket) => {
             console.log('Client connected:', socket.id);
